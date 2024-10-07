@@ -4,9 +4,15 @@ use camino::Utf8PathBuf as PathBuf;
 use serde::Deserialize;
 use url::Url;
 
+#[derive(Deserialize, Clone, Copy)]
+pub enum RunnerID {
+    Snakemake,
+}
+
 #[derive(Deserialize)]
 pub struct RunnerConfig {
     pub experiment_group: String,
+    pub runner: RunnerID,
     pub code_source: CodeSourceConfig,
     pub remote_host: RemoteHostConfig,
     pub local_host: LocalHostConfig,
@@ -24,10 +30,16 @@ pub struct RemoteCodeSourceConfig {
 }
 
 #[derive(Deserialize)]
+pub struct ConfigCodeSourceConfig {
+    pub main: PathBuf,
+    pub paths: Vec<PathBuf>,
+}
+
+#[derive(Deserialize)]
 pub struct CodeSourceConfig {
     pub local: LocalCodeSourceConfig,
     pub remote: RemoteCodeSourceConfig,
-    pub config_dirs: Vec<String>,
+    pub config: ConfigCodeSourceConfig,
 }
 
 #[derive(Deserialize)]
@@ -36,6 +48,7 @@ pub struct RemoteHostConfig {
     pub hostname: String,
     pub experiment_base_dir: PathBuf,
     pub temporary_dir: PathBuf,
+    pub fast_access_container_requests: Vec<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -46,14 +59,14 @@ pub struct LocalHostConfig {
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
-    #[arg(short, long)]
+    #[arg(long)]
     pub print_completion: bool,
 
     #[command(subcommand)]
     pub command: Option<RunnerCommandConfig>,
 }
 
-#[derive(Deserialize, ValueEnum, Clone, Debug)]
+#[derive(Deserialize, ValueEnum, Clone, Debug, PartialEq)]
 pub enum HostType {
     Local,
     Remote,
@@ -68,22 +81,43 @@ pub enum RunnerCommandConfig {
         #[arg(short = 'g', long)]
         experiment_group: Option<String>,
 
-        #[arg(short, long)]
+        #[arg(short = 'v', long)]
         revision: Option<String>,
 
-        #[arg(short = 'p', long, value_enum)]
+        #[arg(short = 'p', long, value_enum, default_value = "local")]
         host: HostType,
 
-        #[arg(short, long)]
-        test_on_remote: bool,
+        #[arg(short = 'q', long)]
+        enforce_quick: bool,
+
+        #[arg(short = 'c', long)]
+        review_config: bool,
 
         #[arg(trailing_var_arg = true)]
         remainder: Vec<String>,
     },
-    AllocateTestNode {},
-    DeallocateTestNode {},
-    ListExperiments {},
-    AttachExperiments {},
-    SyncExperiments {},
-    TailLog {},
+    RemotePrepare {},
+    RemoteClear {},
+    ListExperiments {
+        #[arg(short = 'p', long, value_enum, default_value = "remote")]
+        host: HostType,
+
+        #[arg(short = 'r', long)]
+        running: bool,
+    },
+    ExperimentAttach {
+        #[arg(short = 'q', long)]
+        quick: bool,
+    },
+    ExperimentSync {},
+    ExperimentLog {
+        #[arg(short = 'p', long, value_enum, default_value = "remote")]
+        host: HostType,
+
+        #[arg(short = 'q', long)]
+        quick_run: bool,
+
+        #[arg(short = 'f', long)]
+        follow: bool,
+    },
 }

@@ -39,6 +39,7 @@ impl SyncOptions {
         }
     }
 
+    #[allow(unused)]
     pub fn quiet(mut self) -> SyncOptions {
         self.quiet = true;
         self
@@ -54,8 +55,15 @@ impl SyncOptions {
         self
     }
 
-    pub fn info(mut self, infos: &Vec<String>) -> SyncOptions {
-        self.infos.extend(infos.clone());
+    #[allow(unused)]
+    pub fn info(mut self, infos: &Vec<&str>) -> SyncOptions {
+        self.infos.extend(
+            infos
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect::<Vec<_>>()
+                .clone(),
+        );
         self
     }
 
@@ -92,8 +100,9 @@ pub fn rsync<'a>(payload: SyncPayload<'a>, options: SyncOptions) -> std::io::Res
     }
 
     if options.excludes.len() > 0 {
-        let excludes = options.excludes.join(",");
-        cmd.arg(format!("--exclude={excludes}"));
+        for exclude in &options.excludes {
+            cmd.arg(format!("--exclude={exclude}"));
+        }
     }
 
     let ensure_correct_source = move |source| {
@@ -139,9 +148,7 @@ pub fn rsync<'a>(payload: SyncPayload<'a>, options: SyncOptions) -> std::io::Res
         }
     }
 
-    println!("runn rsync");
     cmd.status()?;
-    println!("finish rsync");
 
     Ok(())
 }

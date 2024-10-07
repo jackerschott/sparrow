@@ -1,5 +1,5 @@
 [package]
-name = "runner_rust"
+name = "runner"
 version = "0.1.0"
 edition = "2021"
 
@@ -20,3 +20,4 @@ tempfile = "3.12.0"
 tokio = { version = "1.40.0", features = ["full"] }
 url = { version = "2.5.2", features = ["serde"] }
 url_serde = "0.2.0"
+walkdir = "2.5.0"

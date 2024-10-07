@@ -1,28 +1,31 @@
 #![feature(let_chains)]
-#![allow(unused)]
+#![feature(exit_status_error)]
+//#![allow(unused)]
 
 mod cfg;
 mod host;
+mod payload;
 mod runner;
 mod utils;
 
-//use openssh::{Session, KnownHosts};
+use crate::utils::select_interactively;
 use cfg::*;
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
-use host::local::LocalHost;
-use host::slurm_cluster::SlurmClusterHost;
-use host::{CodeSource, ConfigSource, Host, PayloadSource};
-use runner::snakemake::run;
-use futures::executor::block_on;
-
-use std::io::Write;
+use host::{build_host, ExperimentID};
+use payload::build_payload_source;
+use runner::{build_runner, ExperimentInfo};
 
 fn main() {
     let cli = Cli::parse();
 
-    let config_builder = Config::builder().add_source(File::new("run", FileFormat::Yaml));
+    let config: RunnerConfig = Config::builder()
+        .add_source(File::new("run", FileFormat::Yaml))
+        .build()
+        .expect("could not build configuration")
+        .try_deserialize()
+        .expect("Could not deserialize configuration");
 
     if cli.print_completion {
         generate(Fish, &mut Cli::command(), "runner", &mut std::io::stdout());
@@ -35,103 +38,105 @@ fn main() {
             experiment_group,
             revision,
             host,
-            test_on_remote,
+            enforce_quick,
+            review_config,
             remainder,
         }) => {
-            let config: RunnerConfig = config_builder
-                .build()
-                .expect("could not build configuration")
-                .try_deserialize()
-                .expect("Could not deserialize configuration");
+            let experiment_group = experiment_group.unwrap_or(config.experiment_group);
+            let experiment_id = ExperimentID::new(&experiment_name, &experiment_group);
 
-            run_full(
-                experiment_name,
-                experiment_group.unwrap_or(config.experiment_group),
-                revision,
-                host,
-                test_on_remote,
-                config.local_host,
-                config.remote_host,
-                config.code_source,
-                remainder,
+            println!("Connect to host...");
+            let host = build_host(host, &config.local_host, &config.remote_host, enforce_quick)
+                .unwrap_or_else(|err| {
+                    eprintln!("error while building host: {}", err);
+                    std::process::exit(1);
+                });
+            let runner = build_runner(config.runner, &remainder);
+            let payload_source = build_payload_source(&config.code_source, revision.as_deref());
+
+            let experiment_info =
+                ExperimentInfo::new(&*host, &*runner, &payload_source, &experiment_id);
+            let run_script = runner.create_run_script(&experiment_info);
+
+            let run_dir = host.prepare_run_directory(&payload_source, run_script, review_config);
+
+            println!("Run experiment...");
+            runner.run(&*host, &run_dir, &experiment_id);
+        }
+        Some(RunnerCommandConfig::RemotePrepare {}) => {
+            let host = build_host(
+                HostType::Remote,
+                &config.local_host,
+                &config.remote_host,
+                true,
+            )
+            .expect("expected host building to always succeed");
+            host.prepare();
+            host.wait_for_preparation();
+        }
+        Some(RunnerCommandConfig::RemoteClear {}) => {
+            let host = build_host(
+                HostType::Remote,
+                &config.local_host,
+                &config.remote_host,
+                true,
+            )
+            .expect("expected host building to always succeed");
+            host.clear_preparation();
+        }
+        Some(RunnerCommandConfig::ListExperiments { host, running }) => {
+            let host = build_host(host, &config.local_host, &config.remote_host, false)
+                .expect("expected host building to always succeed");
+
+            let experiment_ids = if running {
+                host.running_experiments()
+            } else {
+                host.experiments()
+            };
+
+            for experiment_id in experiment_ids {
+                println!("{}", experiment_id);
+            }
+        }
+        Some(RunnerCommandConfig::ExperimentAttach { quick }) => {
+            let host = build_host(
+                HostType::Remote,
+                &config.local_host,
+                &config.remote_host,
+                quick,
+            )
+            .expect("expected host building to always succeed");
+            host.attach(select_interactively(&host.running_experiments()));
+        }
+        Some(RunnerCommandConfig::ExperimentSync {}) => {
+            let host = build_host(
+                HostType::Remote,
+                &config.local_host,
+                &config.remote_host,
+                false,
+            )
+            .expect("expected host building to always succeed");
+
+            host.sync(
+                select_interactively(&host.experiments()),
+                &config.local_host.experiment_base_dir,
             );
         }
-        Some(RunnerCommandConfig::AllocateTestNode {}) => {
-            todo!("Allocating test node");
-        }
-        Some(RunnerCommandConfig::DeallocateTestNode {}) => {
-            todo!("Deallocating test node");
-        }
-        Some(RunnerCommandConfig::ListExperiments {}) => {
-            todo!("Listing experiments");
-        }
-        Some(RunnerCommandConfig::AttachExperiments {}) => {
-            todo!("Attaching experiments");
-        }
-        Some(RunnerCommandConfig::SyncExperiments {}) => {
-            todo!("Syncing experiments");
-        }
-        Some(RunnerCommandConfig::TailLog {}) => {
-            todo!("Tailing log");
+        Some(RunnerCommandConfig::ExperimentLog {
+            host,
+            quick_run,
+            follow,
+        }) => {
+            let host = build_host(host, &config.local_host, &config.remote_host, quick_run)
+                .expect("expected host building to always succeed");
+
+            let experiment_id = select_interactively(&host.running_experiments()).clone();
+            let log_file_path = select_interactively(&host.log_file_paths(&experiment_id)).clone();
+            host.tail_log(&experiment_id, &log_file_path, follow);
         }
         None => {
-            println!("no command specified");
+            eprintln!("no command specified");
+            std::process::exit(1);
         }
     }
-}
-
-fn run_full(
-    experiment_name: String,
-    experiment_group: String,
-    revision: Option<String>,
-    host: HostType,
-    test_on_remote: bool,
-    local_host_config: LocalHostConfig,
-    remote_host_config: RemoteHostConfig,
-    code_source_config: CodeSourceConfig,
-    runner_cmdline: Vec<String>,
-) {
-    let payload_source = if let Some(revision) = revision {
-        PayloadSource {
-            code_source: CodeSource::Remote {
-                url: code_source_config.remote.url,
-                git_revision: revision,
-            },
-            config_source: ConfigSource {
-                base_path: code_source_config.local.path,
-                config_paths: code_source_config.config_dirs,
-                copy_excludes: code_source_config.local.excludes.clone(),
-            },
-        }
-    } else {
-        PayloadSource {
-            code_source: CodeSource::Local {
-                path: code_source_config.local.path.clone(),
-                copy_excludes: code_source_config.local.excludes.clone(),
-            },
-            config_source: ConfigSource {
-                base_path: code_source_config.local.path,
-                config_paths: code_source_config.config_dirs,
-                copy_excludes: code_source_config.local.excludes,
-            },
-        }
-    };
-
-    match host {
-        HostType::Local => {
-            let host = LocalHost::new(local_host_config.experiment_base_dir.as_path());
-            let run_dir = host.prepare_run_directory(&payload_source);
-            run(host, &experiment_name, &experiment_group);
-        }
-        HostType::Remote => {
-            let host = SlurmClusterHost::new(
-                remote_host_config.id.as_str(),
-                remote_host_config.hostname.as_str(),
-                remote_host_config.experiment_base_dir.as_path(),
-                remote_host_config.temporary_dir.as_path(),
-            );
-            let run_dir = host.prepare_run_directory(&payload_source);
-            run(host, &experiment_name, &experiment_group);
-        }
-    };
 }
