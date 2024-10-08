@@ -4,7 +4,7 @@ pub mod rsync;
 pub mod slurm_cluster;
 
 use super::utils::Utf8Path;
-use crate::cfg::{HostType, LocalHostConfig, RemoteHostConfig};
+use crate::cfg::{HostType, LocalHostConfig, QuickRunConfig, RemoteHostConfig};
 use crate::payload::{CodeSource, ConfigSource, PayloadSource};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use local::LocalHost;
@@ -45,7 +45,9 @@ pub trait Host {
         if review_config {
             self::review_config(
                 &config_paths,
-                &payload_source.config_source.main_config_path,
+                &config_prep_dir.utf8_path().join(
+                    &payload_source.config_source.main_config_path
+                ),
             );
         }
 
@@ -76,9 +78,9 @@ pub trait Host {
         code_revision: Option<&str>,
     ) -> RunDirectory;
 
-    fn prepare(&self);
+    fn prepare_quick_run(&self, options: &HostPreparationOptions);
     #[allow(unused)]
-    fn is_prepared(&self) -> bool;
+    fn quick_run_is_prepared(&self) -> bool;
     fn wait_for_preparation(&self);
     fn clear_preparation(&self);
 
@@ -88,6 +90,38 @@ pub trait Host {
     fn attach(&self, experiment_id: &ExperimentID);
     fn sync(&self, experiment_id: &ExperimentID, local_base_path: &Path);
     fn tail_log(&self, experiment_id: &ExperimentID, log_file_path: &Path, follow: bool);
+}
+
+pub enum HostPreparationOptions {
+    SlurmCluster {
+        time: String,
+        cpu_count: u16,
+        gpu_count: u16,
+        fast_access_container_paths: Vec<PathBuf>,
+    },
+    Local {},
+}
+
+impl HostPreparationOptions {
+    pub fn build(
+        host_type: &HostType,
+        time: Option<&str>,
+        cpu_count: Option<u16>,
+        gpu_count: Option<u16>,
+        quick_run_config: &QuickRunConfig,
+    ) -> Self {
+        match host_type {
+            HostType::Local => HostPreparationOptions::Local {},
+            HostType::Remote => HostPreparationOptions::SlurmCluster {
+                time: time.unwrap_or(&quick_run_config.time).to_owned(),
+                cpu_count: cpu_count.unwrap_or(quick_run_config.cpu_count),
+                gpu_count: gpu_count.unwrap_or(quick_run_config.gpu_count),
+                fast_access_container_paths: quick_run_config
+                    .fast_access_container_requests
+                    .clone(),
+            },
+        }
+    }
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -170,11 +204,7 @@ pub fn build_host(
             let quick_run_config = if !configure_for_quick_run {
                 QuickRun::Disabled
             } else {
-                QuickRun::Enabled {
-                    fast_access_container_paths: remote_config
-                        .fast_access_container_requests
-                        .clone(),
-                }
+                QuickRun::Enabled
             };
 
             Ok(Box::new(SlurmClusterHost::new(

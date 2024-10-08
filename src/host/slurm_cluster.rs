@@ -1,6 +1,6 @@
 use super::connection::Connection;
 use super::rsync::SyncOptions;
-use super::{ExperimentID, Host, RunDirectory, RunDirectoryInner};
+use super::{ExperimentID, Host, HostPreparationOptions, RunDirectory, RunDirectoryInner};
 use crate::utils::Utf8Path;
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use std::os::unix::process::CommandExt;
@@ -9,9 +9,7 @@ use tokio::io::AsyncWriteExt;
 
 pub enum QuickRun {
     Disabled,
-    Enabled {
-        fast_access_container_paths: Vec<PathBuf>,
-    },
+    Enabled,
 }
 
 pub struct SlurmClusterHost {
@@ -34,7 +32,7 @@ impl SlurmClusterHost {
         temporary_dir_path: &Path,
         quick_run_config: QuickRun,
     ) -> Self {
-        let hostname = if let QuickRun::Enabled { .. } = quick_run_config {
+        let hostname = if let QuickRun::Enabled = quick_run_config {
             &format!("{hostname}-quick")
         } else {
             hostname
@@ -44,7 +42,7 @@ impl SlurmClusterHost {
             Ok(connection) => connection,
             Err(e) => {
                 eprintln!("Failed to connect to host {}: {}", hostname, e);
-                if let QuickRun::Enabled { .. } = quick_run_config {
+                if let QuickRun::Enabled = quick_run_config {
                     eprintln!("Did you forget to prepare the remote?")
                 }
                 std::process::exit(1);
@@ -63,11 +61,22 @@ impl SlurmClusterHost {
 }
 
 impl SlurmClusterHost {
-    pub fn allocate_quick_run_node(&self, fast_access_container_paths: &Vec<PathBuf>) {
+    pub fn allocate_quick_run_node(
+        &self,
+        time: &str,
+        cpu_count: u16,
+        gpu_count: u16,
+        fast_access_container_paths: &Vec<PathBuf>,
+    ) {
         let submission_script = Self::build_quick_run_towel_job_script(fast_access_container_paths);
 
         let partition_ids = self.get_quick_run_towel_partition_ids();
-        let submission_options = Self::quick_run_towel_job_submission_options(&partition_ids);
+        let submission_options = Self::quick_run_towel_job_submission_options(
+            time,
+            cpu_count,
+            gpu_count,
+            &partition_ids,
+        );
 
         let log_path = self.quick_run_towel_log_path();
         self.submit_quick_run_towel_job(&submission_script, &submission_options, &log_path);
@@ -182,13 +191,19 @@ impl SlurmClusterHost {
         )
     }
 
-    fn quick_run_towel_job_submission_options(partition_ids: &Vec<String>) -> Vec<String> {
+    fn quick_run_towel_job_submission_options(
+        time: &str,
+        cpu_count: u16,
+        gpu_count: u16,
+        partition_ids: &Vec<String>,
+    ) -> Vec<String> {
         vec![
-            format!("--partition={}", partition_ids.join(",")),
-            "--time=5:00:00".to_owned(),
-            "--cpus-per-task=4".to_owned(),
-            "--gpus=1".to_owned(),
             format!("--job-name={}", Self::QUICK_RUN_TOWEL_JOB_NAME),
+            format!("--nodes=1-1"),
+            format!("--time={time}"),
+            format!("--cpus-per-task={cpu_count}"),
+            format!("--gpus={gpu_count}"),
+            format!("--partition={}", partition_ids.join(",")),
         ]
     }
 
@@ -252,7 +267,7 @@ impl Host for SlurmClusterHost {
         false
     }
     fn is_configured_for_quick_run(&self) -> bool {
-        self.hostname.ends_with("-test")
+        self.hostname.ends_with("-quick")
     }
 
     fn create_run_from_prep_dir(
@@ -266,7 +281,10 @@ impl Host for SlurmClusterHost {
         self.connection.upload(
             prep_dir.utf8_path(),
             run_dir_path.as_path(),
-            SyncOptions::default().copy_contents().delete(),
+            SyncOptions::default()
+                .copy_contents()
+                .delete()
+                .info(&vec!["DEL", "REMOVE", "NAME"]),
         );
 
         return RunDirectory {
@@ -275,35 +293,43 @@ impl Host for SlurmClusterHost {
         };
     }
 
-    fn prepare(&self) {
+    fn prepare_quick_run(&self, options: &HostPreparationOptions) {
         match &self.quick_run_config {
-            QuickRun::Enabled {
-                fast_access_container_paths,
-            } => self.allocate_quick_run_node(fast_access_container_paths),
-            QuickRun::Disabled => {}
+            QuickRun::Enabled => {}
+            QuickRun::Disabled => match &options {
+                HostPreparationOptions::SlurmCluster {
+                    time,
+                    cpu_count,
+                    gpu_count,
+                    fast_access_container_paths,
+                } => self.allocate_quick_run_node(
+                    &time,
+                    *cpu_count,
+                    *gpu_count,
+                    fast_access_container_paths,
+                ),
+                _ => panic!("expected SlurmCluster options"),
+            },
         }
     }
-    fn is_prepared(&self) -> bool {
+    fn quick_run_is_prepared(&self) -> bool {
         match &self.quick_run_config {
-            QuickRun::Enabled { .. } => self.has_allocated_quick_run_node(),
-            QuickRun::Disabled => true,
+            QuickRun::Enabled => true,
+            QuickRun::Disabled => self.has_allocated_quick_run_node(),
         }
     }
 
     fn wait_for_preparation(&self) {
         match &self.quick_run_config {
-            QuickRun::Enabled { .. } => {
+            QuickRun::Enabled => {}
+            QuickRun::Disabled => {
                 self.tail_quick_run_towel_submission_log(&self.quick_run_towel_log_path())
             }
-            QuickRun::Disabled => {}
         }
     }
 
     fn clear_preparation(&self) {
-        match &self.quick_run_config {
-            QuickRun::Enabled { .. } => self.deallocate_quick_run_node(),
-            QuickRun::Disabled => {}
-        }
+        self.deallocate_quick_run_node()
     }
 
     fn experiments(&self) -> Vec<ExperimentID> {

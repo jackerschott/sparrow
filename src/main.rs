@@ -13,7 +13,7 @@ use cfg::*;
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
-use host::{build_host, ExperimentID};
+use host::{build_host, ExperimentID, HostPreparationOptions};
 use payload::build_payload_source;
 use runner::{build_runner, ExperimentInfo};
 
@@ -39,7 +39,7 @@ fn main() {
             revision,
             host,
             enforce_quick,
-            review_config,
+            no_config_review,
             remainder,
         }) => {
             let experiment_group = experiment_group.unwrap_or(config.experiment_group);
@@ -58,28 +58,39 @@ fn main() {
                 ExperimentInfo::new(&*host, &*runner, &payload_source, &experiment_id);
             let run_script = runner.create_run_script(&experiment_info);
 
-            let run_dir = host.prepare_run_directory(&payload_source, run_script, review_config);
+            let run_dir =
+                host.prepare_run_directory(&payload_source, run_script, !no_config_review);
 
             println!("Run experiment...");
             runner.run(&*host, &run_dir, &experiment_id);
         }
-        Some(RunnerCommandConfig::RemotePrepare {}) => {
+        Some(RunnerCommandConfig::RemotePrepareQuickRun {
+            time,
+            gpu_count,
+            cpu_count,
+        }) => {
             let host = build_host(
                 HostType::Remote,
                 &config.local_host,
                 &config.remote_host,
-                true,
+                false,
             )
             .expect("expected host building to always succeed");
-            host.prepare();
+            host.prepare_quick_run(&HostPreparationOptions::build(
+                &HostType::Remote,
+                time.as_deref(),
+                cpu_count,
+                gpu_count,
+                &config.remote_host.quick_run,
+            ));
             host.wait_for_preparation();
         }
-        Some(RunnerCommandConfig::RemoteClear {}) => {
+        Some(RunnerCommandConfig::RemoteClearQuickRun {}) => {
             let host = build_host(
                 HostType::Remote,
                 &config.local_host,
                 &config.remote_host,
-                true,
+                false,
             )
             .expect("expected host building to always succeed");
             host.clear_preparation();

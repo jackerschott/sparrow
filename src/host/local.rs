@@ -1,4 +1,4 @@
-use super::{ExperimentID, Host, RunDirectory, RunDirectoryInner};
+use super::{ExperimentID, Host, HostPreparationOptions, RunDirectory, RunDirectoryInner};
 use crate::utils::{AsUtf8Path, Utf8Str};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use tempfile::TempDir;
@@ -45,8 +45,8 @@ impl Host for LocalHost {
         };
     }
 
-    fn prepare(&self) {}
-    fn is_prepared(&self) -> bool {
+    fn prepare_quick_run(&self, _options: &HostPreparationOptions) {}
+    fn quick_run_is_prepared(&self) -> bool {
         true
     }
     fn wait_for_preparation(&self) {}

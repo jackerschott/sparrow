@@ -43,12 +43,20 @@ pub struct CodeSourceConfig {
 }
 
 #[derive(Deserialize)]
+pub struct QuickRunConfig {
+    pub time: String,
+    pub cpu_count: u16,
+    pub gpu_count: u16,
+    pub fast_access_container_requests: Vec<PathBuf>,
+}
+
+#[derive(Deserialize)]
 pub struct RemoteHostConfig {
     pub id: String,
     pub hostname: String,
     pub experiment_base_dir: PathBuf,
     pub temporary_dir: PathBuf,
-    pub fast_access_container_requests: Vec<PathBuf>,
+    pub quick_run: QuickRunConfig,
 }
 
 #[derive(Deserialize)]
@@ -91,13 +99,22 @@ pub enum RunnerCommandConfig {
         enforce_quick: bool,
 
         #[arg(short = 'c', long)]
-        review_config: bool,
+        no_config_review: bool,
 
         #[arg(trailing_var_arg = true)]
         remainder: Vec<String>,
     },
-    RemotePrepare {},
-    RemoteClear {},
+    RemotePrepareQuickRun {
+        #[arg(short = 't', long)]
+        time: Option<String>,
+
+        #[arg(short = 'c', long)]
+        cpu_count: Option<u16>,
+
+        #[arg(short = 'g', long)]
+        gpu_count: Option<u16>,
+    },
+    RemoteClearQuickRun {},
     ListExperiments {
         #[arg(short = 'p', long, value_enum, default_value = "remote")]
         host: HostType,
