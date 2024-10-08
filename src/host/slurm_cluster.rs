@@ -307,18 +307,14 @@ impl Host for SlurmClusterHost {
     }
 
     fn experiments(&self) -> Vec<ExperimentID> {
-        if !self.experiment_base_dir_path.as_path().exists() {
-            return Vec::new();
-        }
-
         let find_output = self
             .connection
             .command("find")
             .arg(self.experiment_base_dir_path.as_str())
             .arg("-mindepth")
-            .arg("1")
+            .arg("2")
             .arg("-maxdepth")
-            .arg("1")
+            .arg("2")
             .arg("-type")
             .arg("d")
             .output()
@@ -334,8 +330,8 @@ impl Host for SlurmClusterHost {
             .lines()
             .map(|line| Path::new(line))
             .map(|path| {
-                let group = path.file_name().unwrap();
-                let name = path.parent().unwrap().file_name().unwrap();
+                let name = path.file_name().unwrap();
+                let group = path.parent().unwrap().file_name().unwrap();
                 ExperimentID::new(name, group)
             })
             .collect()
