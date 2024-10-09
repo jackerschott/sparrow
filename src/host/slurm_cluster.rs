@@ -1,13 +1,9 @@
 use super::connection::Connection;
 use super::rsync::SyncOptions;
-use super::{
-    ExperimentID, ExperimentSyncOptions, Host, HostPreparationOptions, RunDirectory,
-    RunDirectoryInner,
-};
+use super::{ExperimentID, ExperimentSyncOptions, Host, QuickRunPrepOptions, RunDirectory};
 use crate::utils::Utf8Path;
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use std::os::unix::process::CommandExt;
-use tempfile::TempDir;
 use tokio::io::AsyncWriteExt;
 
 pub enum QuickRun {
@@ -273,34 +269,30 @@ impl Host for SlurmClusterHost {
         self.hostname.ends_with("-quick")
     }
 
-    fn create_run_from_prep_dir(
-        &self,
-        prep_dir: TempDir,
-        code_revision: Option<&str>,
-    ) -> RunDirectory {
+    fn run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
         let run_dir_path = self
             .temporary_dir_path
             .join(tmpname("experiment_code.", "", 4));
         self.connection.upload(
-            prep_dir.utf8_path(),
-            run_dir_path.as_path(),
+            &prep_dir.utf8_path(),
+            &run_dir_path,
             SyncOptions::default()
                 .copy_contents()
                 .delete()
                 .info(&vec!["DEL", "REMOVE", "NAME"]),
         );
-
-        return RunDirectory {
-            inner: RunDirectoryInner::Remote { run_dir_path },
-            code_revision: code_revision.map(|s| s.to_owned()),
-        };
+        return RunDirectory::Remote(run_dir_path);
     }
 
-    fn prepare_quick_run(&self, options: &HostPreparationOptions) {
+    fn put(&self, local_path: &Path, host_path: &Path, options: SyncOptions) {
+        self.connection.upload(local_path, host_path, options);
+    }
+
+    fn prepare_quick_run(&self, options: &QuickRunPrepOptions) {
         match &self.quick_run_config {
             QuickRun::Enabled => {}
             QuickRun::Disabled => match &options {
-                HostPreparationOptions::SlurmCluster {
+                QuickRunPrepOptions::SlurmCluster {
                     time,
                     cpu_count,
                     gpu_count,

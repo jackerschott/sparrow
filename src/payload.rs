@@ -1,5 +1,4 @@
 use crate::cfg::CodeSourceConfig;
-use crate::host::RunDirectory;
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use url::Url;
 
@@ -32,22 +31,17 @@ pub struct PayloadSource {
 #[derive(serde::Serialize)]
 pub struct PayloadInfo {
     code_revision: Option<String>,
-    config: PathBuf,
     config_dir: PathBuf,
 }
 
-impl PayloadSource {
-    pub fn info(&self) -> PayloadInfo {
+impl PayloadInfo {
+    pub fn new(source: &PayloadSource, config_dir_destination_path: &Path) -> PayloadInfo {
         PayloadInfo {
-            code_revision: match &self.code_source {
+            code_revision: match &source.code_source {
                 CodeSource::Remote { git_revision, .. } => Some(git_revision.clone()),
                 _ => None,
             },
-            config: RunDirectory::config_entrypoint_path(
-                &self.config_source.dir_path,
-                &self.config_source.entrypoint_path,
-            ),
-            config_dir: RunDirectory::config_dir_path(),
+            config_dir: config_dir_destination_path.to_owned(),
         }
     }
 }

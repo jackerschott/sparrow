@@ -49,7 +49,10 @@ impl ExperimentInfo {
             id: experiment_id.clone(),
             host: host.info(),
             runner: runner.info(),
-            payload: payload_source.info(),
+            payload: PayloadInfo::new(
+                payload_source,
+                &host.config_dir_destination_path(&experiment_id),
+            ),
         }
     }
 }

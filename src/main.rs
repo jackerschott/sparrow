@@ -13,7 +13,7 @@ use cfg::*;
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
-use host::{build_host, ExperimentID, HostPreparationOptions};
+use host::{build_host, ExperimentID, QuickRunPrepOptions};
 use payload::build_payload_source;
 use runner::{build_runner, ExperimentInfo};
 
@@ -70,8 +70,15 @@ fn main() {
                 return;
             }
 
-            let run_dir =
-                host.prepare_run_directory(&payload_source, run_script, !no_config_review);
+            println!("Prepare run directory...");
+            let run_dir = host.prepare_run_directory(&payload_source.code_source, run_script);
+
+            println!("Prepare config...");
+            host.prepare_config_directory(
+                &payload_source.config_source,
+                &experiment_id,
+                !no_config_review,
+            );
 
             println!("Run experiment...");
             runner.run(&*host, &run_dir, &experiment_id);
@@ -88,7 +95,7 @@ fn main() {
                 false,
             )
             .expect("expected host building to always succeed");
-            host.prepare_quick_run(&HostPreparationOptions::build(
+            host.prepare_quick_run(&QuickRunPrepOptions::build(
                 &HostType::Remote,
                 time.as_deref(),
                 cpu_count,

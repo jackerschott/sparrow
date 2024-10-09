@@ -1,10 +1,7 @@
-use super::{
-    ExperimentID, ExperimentSyncOptions, Host, HostPreparationOptions, RunDirectory,
-    RunDirectoryInner,
-};
+use super::rsync::{copy_directory, SyncOptions};
+use super::{ExperimentID, ExperimentSyncOptions, Host, QuickRunPrepOptions, RunDirectory};
 use crate::utils::{AsUtf8Path, Utf8Str};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
-use tempfile::TempDir;
 
 pub struct LocalHost {
     experiment_base_dir_path: PathBuf,
@@ -37,18 +34,17 @@ impl Host for LocalHost {
         true
     }
 
-    fn create_run_from_prep_dir(
-        &self,
-        prep_dir: TempDir,
-        code_revision: Option<&str>,
-    ) -> RunDirectory {
-        return RunDirectory {
-            inner: RunDirectoryInner::Local { run_dir: prep_dir },
-            code_revision: code_revision.map(|s| s.to_owned()),
-        };
+    fn run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
+        return RunDirectory::Local(prep_dir);
     }
 
-    fn prepare_quick_run(&self, _options: &HostPreparationOptions) {}
+    fn put(&self, local_path: &Path, host_path: &Path, options: SyncOptions) {
+        if local_path != host_path {
+            copy_directory(local_path, host_path, options);
+        }
+    }
+
+    fn prepare_quick_run(&self, _options: &QuickRunPrepOptions) {}
     fn quick_run_is_prepared(&self) -> bool {
         true
     }

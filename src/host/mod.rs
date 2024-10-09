@@ -5,7 +5,7 @@ pub mod slurm_cluster;
 
 use super::utils::Utf8Path;
 use crate::cfg::{HostType, LocalHostConfig, QuickRunConfig, RemoteHostConfig};
-use crate::payload::{CodeSource, ConfigSource, PayloadSource};
+use crate::payload::{CodeSource, ConfigSource};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use local::LocalHost;
 use rsync::{copy_directory, SyncOptions};
@@ -33,25 +33,10 @@ pub trait Host {
 
     fn prepare_run_directory(
         &self,
-        payload_source: &PayloadSource,
+        code_source: &CodeSource,
         run_script: NamedTempFile,
-        review_config: bool,
     ) -> RunDirectory {
-        println!("Prepare code...");
-        let payload_prep_dir = prepare_code(&payload_source.code_source);
-
-        println!("Prepare config...");
-        let (config_prep_dir, config_dest_dir_path, config_dest_entry_path) =
-            prepare_config(&payload_source.config_source);
-        if review_config {
-            self::review_config(&config_dest_dir_path, &config_dest_entry_path);
-        }
-
-        copy_directory(
-            config_prep_dir.utf8_path(),
-            payload_prep_dir.utf8_path(),
-            SyncOptions::default().copy_contents(),
-        );
+        let payload_prep_dir = prepare_code(&code_source);
 
         let run_script_dest_path = payload_prep_dir.utf8_path().join("run.sh");
         std::fs::copy(&run_script, &run_script_dest_path).expect(&format!(
@@ -60,21 +45,58 @@ pub trait Host {
             run_script_dest_path
         ));
 
-        println!("Prepare run directory...");
-        if let CodeSource::Remote { git_revision, .. } = &payload_source.code_source {
-            self.create_run_from_prep_dir(payload_prep_dir, Some(git_revision.as_str()))
-        } else {
-            self.create_run_from_prep_dir(payload_prep_dir, None)
-        }
+        return self.run_dir(payload_prep_dir);
     }
 
-    fn create_run_from_prep_dir(
-        &self,
-        prep_dir: TempDir,
-        code_revision: Option<&str>,
-    ) -> RunDirectory;
+    fn run_dir(&self, prep_dir_path: TempDir) -> RunDirectory;
 
-    fn prepare_quick_run(&self, options: &HostPreparationOptions);
+    fn prepare_config_directory(
+        &self,
+        config_source: &ConfigSource,
+        experiment_id: &ExperimentID,
+        review: bool,
+    ) {
+        let review_dir = TempDir::new().expect("expected temporary directory creation to work");
+
+        copy_directory(
+            &config_source.base_path.join(&config_source.dir_path),
+            review_dir.utf8_path(),
+            SyncOptions::default()
+                .copy_contents()
+                .exclude(&config_source.copy_excludes),
+        );
+
+        if review {
+            let entry_path = review_dir.utf8_path().join(
+                config_source
+                    .entrypoint_path
+                    .strip_prefix(&config_source.dir_path)
+                    .expect(&format!(
+                        "expected {} to be a subpath of {}",
+                        config_source.dir_path, config_source.entrypoint_path
+                    )),
+            );
+            review_config(review_dir.utf8_path(), &entry_path);
+        }
+
+        self.put(
+            review_dir.utf8_path(),
+            &self.config_dir_destination_path(experiment_id),
+            SyncOptions::default()
+                .copy_contents()
+                .create_missing_path_components(),
+        )
+    }
+
+    fn config_dir_destination_path(&self, experiment_id: &ExperimentID) -> PathBuf {
+        experiment_id
+            .path(self.experiment_base_dir_path())
+            .join("reproduce_info/config")
+    }
+
+    fn put(&self, local_path: &Path, host_path: &Path, options: SyncOptions);
+
+    fn prepare_quick_run(&self, options: &QuickRunPrepOptions);
     #[allow(unused)]
     fn quick_run_is_prepared(&self) -> bool;
     fn wait_for_preparation(&self);
@@ -93,7 +115,21 @@ pub trait Host {
     fn tail_log(&self, experiment_id: &ExperimentID, log_file_path: &Path, follow: bool);
 }
 
-pub enum HostPreparationOptions {
+pub enum RunDirectory {
+    Local(TempDir),
+    Remote(PathBuf),
+}
+
+impl RunDirectory {
+    pub fn path(&self) -> &Path {
+        match self {
+            RunDirectory::Local(dir) => dir.utf8_path(),
+            RunDirectory::Remote(path) => path,
+        }
+    }
+}
+
+pub enum QuickRunPrepOptions {
     SlurmCluster {
         time: String,
         cpu_count: u16,
@@ -103,7 +139,7 @@ pub enum HostPreparationOptions {
     Local {},
 }
 
-impl HostPreparationOptions {
+impl QuickRunPrepOptions {
     pub fn build(
         host_type: &HostType,
         time: Option<&str>,
@@ -112,8 +148,8 @@ impl HostPreparationOptions {
         quick_run_config: &QuickRunConfig,
     ) -> Self {
         match host_type {
-            HostType::Local => HostPreparationOptions::Local {},
-            HostType::Remote => HostPreparationOptions::SlurmCluster {
+            HostType::Local => QuickRunPrepOptions::Local {},
+            HostType::Remote => QuickRunPrepOptions::SlurmCluster {
                 time: time.unwrap_or(&quick_run_config.time).to_owned(),
                 cpu_count: cpu_count.unwrap_or(quick_run_config.cpu_count),
                 gpu_count: gpu_count.unwrap_or(quick_run_config.gpu_count),
@@ -164,49 +200,6 @@ pub struct HostInfo {
     pub experiment_base_dir_path: PathBuf,
     pub is_local: bool,
     pub is_configured_for_quick_run: bool,
-}
-
-pub enum RunDirectoryInner {
-    Remote { run_dir_path: PathBuf },
-    Local { run_dir: TempDir },
-}
-pub struct RunDirectory {
-    inner: RunDirectoryInner,
-
-    #[allow(unused)]
-    code_revision: Option<String>,
-}
-
-impl RunDirectory {
-    pub const RUNNER_CONFIG_DIR_PATH: &'static str = ".runner_config";
-
-    pub fn path(&self) -> &Path {
-        match &self.inner {
-            RunDirectoryInner::Remote { run_dir_path } => run_dir_path.as_path(),
-            RunDirectoryInner::Local { run_dir } => run_dir.utf8_path(),
-        }
-    }
-
-    #[allow(unused)]
-    pub fn code_revision(&self) -> Option<&str> {
-        self.code_revision.as_deref()
-    }
-
-    pub fn config_dir_path() -> PathBuf {
-        return PathBuf::from(Self::RUNNER_CONFIG_DIR_PATH);
-    }
-
-    pub fn config_entrypoint_path(
-        dir_path_from_base: &Path,
-        entry_path_from_base: &Path,
-    ) -> PathBuf {
-        let entry_path_from_dir = entry_path_from_base
-            .strip_prefix(dir_path_from_base)
-            .expect(&format!(
-                "expected {dir_path_from_base} to be a subpath of {entry_path_from_base}"
-            ));
-        Self::config_dir_path().join(entry_path_from_dir)
-    }
 }
 
 pub fn build_host(
@@ -270,35 +263,6 @@ fn prepare_code(code_source: &CodeSource) -> TempDir {
     }
 
     return prep_dir;
-}
-
-fn prepare_config(config_source: &ConfigSource) -> (TempDir, PathBuf, PathBuf) {
-    let prep_dir = TempDir::new().expect("failed to create temporary directory");
-
-    let config_dir_source_path = config_source
-        .base_path
-        .join(config_source.dir_path.as_str());
-    let config_dir_dest_path = prep_dir.utf8_path().join(RunDirectory::config_dir_path());
-
-    std::fs::create_dir_all(config_dir_dest_path.as_path()).expect(&format!(
-        "expected creation of {config_dir_dest_path} to work"
-    ));
-
-    copy_directory(
-        config_dir_source_path.as_path(),
-        config_dir_dest_path.as_path(),
-        SyncOptions::default()
-            .copy_contents()
-            .exclude(&config_source.copy_excludes),
-    );
-
-    let config_entry_dest_path = prep_dir
-        .utf8_path()
-        .join(RunDirectory::config_entrypoint_path(
-            &config_source.dir_path,
-            &config_source.entrypoint_path,
-        ));
-    return (prep_dir, config_dir_dest_path, config_entry_dest_path);
 }
 
 fn review_config(dir_path: &Path, entrypoint_path: &Path) {

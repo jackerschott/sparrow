@@ -27,6 +27,7 @@ pub struct SyncOptions {
     excludes: Vec<String>,
     infos: Vec<String>,
     copy_contents: bool,
+    create_missing_path_components: bool,
 }
 impl SyncOptions {
     pub fn default() -> SyncOptions {
@@ -36,6 +37,7 @@ impl SyncOptions {
             excludes: Vec::new(),
             infos: Vec::new(),
             copy_contents: false,
+            create_missing_path_components: false,
         }
     }
 
@@ -71,6 +73,11 @@ impl SyncOptions {
         self.copy_contents = true;
         self
     }
+
+    pub fn create_missing_path_components(mut self) -> SyncOptions {
+        self.create_missing_path_components = true;
+        self
+    }
 }
 
 fn ensure_trailing_slash(path: &Path) -> PathBuf {
@@ -92,6 +99,10 @@ pub fn rsync<'a>(payload: SyncPayload<'a>, options: SyncOptions) -> std::io::Res
 
     if options.delete {
         cmd.arg("--delete");
+    }
+
+    if options.create_missing_path_components {
+        cmd.arg("--mkpath");
     }
 
     if options.infos.len() > 0 {
