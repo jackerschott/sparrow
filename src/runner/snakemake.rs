@@ -74,6 +74,6 @@ fn build_template_context(experiment_info: &ExperimentInfo) -> minijinja::Value 
         experiment_id => experiment_info.id,
         host => experiment_info.host,
         runner => experiment_info.runner,
-        payload_source => experiment_info.payload_source,
+        payload => experiment_info.payload,
     }
 }

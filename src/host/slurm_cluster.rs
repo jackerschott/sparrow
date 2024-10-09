@@ -1,6 +1,9 @@
 use super::connection::Connection;
 use super::rsync::SyncOptions;
-use super::{ExperimentID, Host, HostPreparationOptions, RunDirectory, RunDirectoryInner};
+use super::{
+    ExperimentID, ExperimentSyncOptions, Host, HostPreparationOptions, RunDirectory,
+    RunDirectoryInner,
+};
 use crate::utils::Utf8Path;
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use std::os::unix::process::CommandExt;
@@ -429,11 +432,19 @@ impl Host for SlurmClusterHost {
             ))
             .exec();
     }
-    fn sync(&self, experiment_id: &ExperimentID, local_base_path: &Path) {
+    fn sync(
+        &self,
+        experiment_id: &ExperimentID,
+        local_base_path: &Path,
+        options: &ExperimentSyncOptions,
+    ) {
         self.connection.download(
             &experiment_id.path(&self.experiment_base_dir_path),
             &local_base_path,
-            SyncOptions::default().copy_contents().delete(),
+            SyncOptions::default()
+                .copy_contents()
+                .delete()
+                .exclude(&options.excludes),
         );
     }
     fn tail_log(&self, experiment_id: &ExperimentID, log_file_path: &Path, follow: bool) {

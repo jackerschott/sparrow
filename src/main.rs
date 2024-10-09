@@ -20,6 +20,11 @@ use runner::{build_runner, ExperimentInfo};
 fn main() {
     let cli = Cli::parse();
 
+    if cli.print_completion {
+        generate(Fish, &mut Cli::command(), "runner", &mut std::io::stdout());
+        return;
+    }
+
     let config: RunnerConfig = Config::builder()
         .add_source(File::new("run", FileFormat::Yaml))
         .build()
@@ -27,20 +32,18 @@ fn main() {
         .try_deserialize()
         .expect("Could not deserialize configuration");
 
-    if cli.print_completion {
-        generate(Fish, &mut Cli::command(), "runner", &mut std::io::stdout());
-        return;
-    }
-
     match cli.command {
         Some(RunnerCommandConfig::Run {
             experiment_name,
             experiment_group,
+            config: config_path,
+            config_dir: config_dir_path,
             revision,
             host,
             enforce_quick,
             no_config_review,
             remainder,
+            only_print_run_script,
         }) => {
             let experiment_group = experiment_group.unwrap_or(config.experiment_group);
             let experiment_id = ExperimentID::new(&experiment_name, &experiment_group);
@@ -52,11 +55,20 @@ fn main() {
                     std::process::exit(1);
                 });
             let runner = build_runner(config.runner, &remainder);
-            let payload_source = build_payload_source(&config.code_source, revision.as_deref());
+            let payload_source = build_payload_source(
+                &config.code_source,
+                config_dir_path.as_deref(),
+                config_path.as_deref(),
+                revision.as_deref(),
+            );
 
             let experiment_info =
                 ExperimentInfo::new(&*host, &*runner, &payload_source, &experiment_id);
             let run_script = runner.create_run_script(&experiment_info);
+            if only_print_run_script {
+                print_run_script(run_script);
+                return;
+            }
 
             let run_dir =
                 host.prepare_run_directory(&payload_source, run_script, !no_config_review);
@@ -119,7 +131,7 @@ fn main() {
             .expect("expected host building to always succeed");
             host.attach(select_interactively(&host.running_experiments()));
         }
-        Some(RunnerCommandConfig::ExperimentSync {}) => {
+        Some(RunnerCommandConfig::ExperimentSync { content }) => {
             let host = build_host(
                 HostType::Remote,
                 &config.local_host,
@@ -131,6 +143,14 @@ fn main() {
             host.sync(
                 select_interactively(&host.experiments()),
                 &config.local_host.experiment_base_dir,
+                &match &content {
+                    ExperimentSyncContent::Results => host::ExperimentSyncOptions {
+                        excludes: config.experiment_sync_options.result_excludes,
+                    },
+                    ExperimentSyncContent::Models => host::ExperimentSyncOptions {
+                        excludes: config.experiment_sync_options.model_excludes,
+                    },
+                },
             );
         }
         Some(RunnerCommandConfig::ExperimentLog {
@@ -143,6 +163,7 @@ fn main() {
 
             let experiment_id = select_interactively(&host.running_experiments()).clone();
             let log_file_path = select_interactively(&host.log_file_paths(&experiment_id)).clone();
+            println!("------ {experiment_id}, {log_file_path} ------");
             host.tail_log(&experiment_id, &log_file_path, follow);
         }
         None => {
@@ -150,4 +171,12 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+fn print_run_script(run_script: tempfile::NamedTempFile) {
+    println!("------ run_script start ------");
+    std::fs::copy(run_script.path(), "/dev/stdout")
+        .expect("expected copying of run script to succeed");
+    println!();
+    println!("------- run_script end -------");
 }

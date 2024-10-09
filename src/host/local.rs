@@ -1,4 +1,7 @@
-use super::{ExperimentID, Host, HostPreparationOptions, RunDirectory, RunDirectoryInner};
+use super::{
+    ExperimentID, ExperimentSyncOptions, Host, HostPreparationOptions, RunDirectory,
+    RunDirectoryInner,
+};
 use crate::utils::{AsUtf8Path, Utf8Str};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use tempfile::TempDir;
@@ -109,7 +112,13 @@ impl Host for LocalHost {
     fn attach(&self, _experiment_id: &ExperimentID) {
         unimplemented!();
     }
-    fn sync(&self, _experiment_id: &ExperimentID, _local_base_path: &Path) {}
+    fn sync(
+        &self,
+        _experiment_id: &ExperimentID,
+        _local_base_path: &Path,
+        _options: &ExperimentSyncOptions,
+    ) {
+    }
     fn tail_log(&self, _experiment_id: &ExperimentID, _log_file_path: &Path, _follow: bool) {
         unimplemented!();
     }

@@ -16,6 +16,7 @@ pub struct RunnerConfig {
     pub code_source: CodeSourceConfig,
     pub remote_host: RemoteHostConfig,
     pub local_host: LocalHostConfig,
+    pub experiment_sync_options: ExperimentSyncOptions,
 }
 
 #[derive(Deserialize)]
@@ -31,8 +32,8 @@ pub struct RemoteCodeSourceConfig {
 
 #[derive(Deserialize)]
 pub struct ConfigCodeSourceConfig {
-    pub main: PathBuf,
-    pub paths: Vec<PathBuf>,
+    pub dir: PathBuf,
+    pub entrypoint: PathBuf,
 }
 
 #[derive(Deserialize)]
@@ -64,6 +65,12 @@ pub struct LocalHostConfig {
     pub experiment_base_dir: PathBuf,
 }
 
+#[derive(Deserialize)]
+pub struct ExperimentSyncOptions {
+    pub result_excludes: Vec<String>,
+    pub model_excludes: Vec<String>,
+}
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
@@ -80,6 +87,12 @@ pub enum HostType {
     Remote,
 }
 
+#[derive(Deserialize, ValueEnum, Clone, Debug, PartialEq)]
+pub enum ExperimentSyncContent {
+    Results,
+    Models,
+}
+
 #[derive(Subcommand)]
 pub enum RunnerCommandConfig {
     Run {
@@ -88,6 +101,12 @@ pub enum RunnerCommandConfig {
 
         #[arg(short = 'g', long)]
         experiment_group: Option<String>,
+
+        #[arg(short = 'c', long)]
+        config: Option<PathBuf>,
+
+        #[arg(short = 'd', long, requires = "config")]
+        config_dir: Option<PathBuf>,
 
         #[arg(short = 'v', long)]
         revision: Option<String>,
@@ -98,11 +117,14 @@ pub enum RunnerCommandConfig {
         #[arg(short = 'q', long)]
         enforce_quick: bool,
 
-        #[arg(short = 'c', long)]
+        #[arg(long)]
         no_config_review: bool,
 
         #[arg(trailing_var_arg = true)]
         remainder: Vec<String>,
+
+        #[arg(long)]
+        only_print_run_script: bool,
     },
     RemotePrepareQuickRun {
         #[arg(short = 't', long)]
@@ -126,7 +148,10 @@ pub enum RunnerCommandConfig {
         #[arg(short = 'q', long)]
         quick: bool,
     },
-    ExperimentSync {},
+    ExperimentSync {
+        #[arg(short = 'c', long, value_enum, default_value = "results")]
+        content: ExperimentSyncContent,
+    },
     ExperimentLog {
         #[arg(short = 'p', long, value_enum, default_value = "remote")]
         host: HostType,

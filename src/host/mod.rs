@@ -41,14 +41,10 @@ pub trait Host {
         let payload_prep_dir = prepare_code(&payload_source.code_source);
 
         println!("Prepare config...");
-        let (config_prep_dir, config_paths) = prepare_config(&payload_source.config_source);
+        let (config_prep_dir, config_dest_dir_path, config_dest_entry_path) =
+            prepare_config(&payload_source.config_source);
         if review_config {
-            self::review_config(
-                &config_paths,
-                &config_prep_dir.utf8_path().join(
-                    &payload_source.config_source.main_config_path
-                ),
-            );
+            self::review_config(&config_dest_dir_path, &config_dest_entry_path);
         }
 
         copy_directory(
@@ -88,7 +84,12 @@ pub trait Host {
     fn running_experiments(&self) -> Vec<ExperimentID>;
     fn log_file_paths(&self, experiment_id: &ExperimentID) -> Vec<PathBuf>;
     fn attach(&self, experiment_id: &ExperimentID);
-    fn sync(&self, experiment_id: &ExperimentID, local_base_path: &Path);
+    fn sync(
+        &self,
+        experiment_id: &ExperimentID,
+        local_base_path: &Path,
+        options: &ExperimentSyncOptions,
+    );
     fn tail_log(&self, experiment_id: &ExperimentID, log_file_path: &Path, follow: bool);
 }
 
@@ -122,6 +123,10 @@ impl HostPreparationOptions {
             },
         }
     }
+}
+
+pub struct ExperimentSyncOptions {
+    pub excludes: Vec<String>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -173,6 +178,8 @@ pub struct RunDirectory {
 }
 
 impl RunDirectory {
+    pub const RUNNER_CONFIG_DIR_PATH: &'static str = ".runner_config";
+
     pub fn path(&self) -> &Path {
         match &self.inner {
             RunDirectoryInner::Remote { run_dir_path } => run_dir_path.as_path(),
@@ -183,6 +190,22 @@ impl RunDirectory {
     #[allow(unused)]
     pub fn code_revision(&self) -> Option<&str> {
         self.code_revision.as_deref()
+    }
+
+    pub fn config_dir_path() -> PathBuf {
+        return PathBuf::from(Self::RUNNER_CONFIG_DIR_PATH);
+    }
+
+    pub fn config_entrypoint_path(
+        dir_path_from_base: &Path,
+        entry_path_from_base: &Path,
+    ) -> PathBuf {
+        let entry_path_from_dir = entry_path_from_base
+            .strip_prefix(dir_path_from_base)
+            .expect(&format!(
+                "expected {dir_path_from_base} to be a subpath of {entry_path_from_base}"
+            ));
+        Self::config_dir_path().join(entry_path_from_dir)
     }
 }
 
@@ -249,45 +272,47 @@ fn prepare_code(code_source: &CodeSource) -> TempDir {
     return prep_dir;
 }
 
-fn prepare_config(config_source: &ConfigSource) -> (TempDir, Vec<PathBuf>) {
+fn prepare_config(config_source: &ConfigSource) -> (TempDir, PathBuf, PathBuf) {
     let prep_dir = TempDir::new().expect("failed to create temporary directory");
 
-    let mut new_config_paths: Vec<PathBuf> = Vec::new();
-    for config_path in &config_source.config_paths {
-        let config_source_path = config_source.base_path.join(config_path.as_str());
-        let config_dest_path = prep_dir.utf8_path().join(config_path.as_str());
+    let config_dir_source_path = config_source
+        .base_path
+        .join(config_source.dir_path.as_str());
+    let config_dir_dest_path = prep_dir.utf8_path().join(RunDirectory::config_dir_path());
 
-        std::fs::create_dir_all(config_dest_path.as_path())
-            .expect(&format!("expected creation of {config_dest_path} to work"));
+    std::fs::create_dir_all(config_dir_dest_path.as_path()).expect(&format!(
+        "expected creation of {config_dir_dest_path} to work"
+    ));
 
-        copy_directory(
-            config_source_path.as_path(),
-            config_dest_path.as_path(),
-            SyncOptions::default()
-                .copy_contents()
-                .exclude(&config_source.copy_excludes),
-        );
+    copy_directory(
+        config_dir_source_path.as_path(),
+        config_dir_dest_path.as_path(),
+        SyncOptions::default()
+            .copy_contents()
+            .exclude(&config_source.copy_excludes),
+    );
 
-        new_config_paths.push(config_dest_path);
-    }
-
-    return (prep_dir, new_config_paths);
+    let config_entry_dest_path = prep_dir
+        .utf8_path()
+        .join(RunDirectory::config_entrypoint_path(
+            &config_source.dir_path,
+            &config_source.entrypoint_path,
+        ));
+    return (prep_dir, config_dir_dest_path, config_entry_dest_path);
 }
 
-fn review_config(config_paths: &Vec<PathBuf>, main_config_path: &Path) {
+fn review_config(dir_path: &Path, entrypoint_path: &Path) {
     let editor_name = std::env::var("EDITOR").expect("EDITOR variable should be set");
     let mut cmd = std::process::Command::new(editor_name);
 
-    cmd.arg(main_config_path.as_str());
-    for path in config_paths.iter() {
-        for entry in walkdir::WalkDir::new(path) {
-            let entry = entry.expect("expected config dir walking to work");
-            if entry.path() == main_config_path {
-                continue;
-            }
-
-            cmd.arg(entry.path());
+    cmd.arg(entrypoint_path.as_str());
+    for entry in walkdir::WalkDir::new(dir_path) {
+        let entry = entry.expect("expected config dir walking to work");
+        if entry.path() == entrypoint_path {
+            continue;
         }
+
+        cmd.arg(entry.path());
     }
 
     cmd.status().expect("expected {cmd} to run successfully");
