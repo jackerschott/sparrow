@@ -1,6 +1,6 @@
 #![feature(let_chains)]
 #![feature(exit_status_error)]
-//#![allow(unused)]
+#![feature(is_none_or)]
 
 mod cfg;
 mod host;
@@ -36,8 +36,7 @@ fn main() {
         Some(RunnerCommandConfig::Run {
             experiment_name,
             experiment_group,
-            config: config_path,
-            config_dir: config_dir_path,
+            config_dir,
             revision,
             host,
             enforce_quick,
@@ -55,10 +54,10 @@ fn main() {
                     std::process::exit(1);
                 });
             let runner = build_runner(config.runner, &remainder);
+
             let payload_source = build_payload_source(
                 &config.code_source,
-                config_dir_path.as_deref(),
-                config_path.as_deref(),
+                config_dir.as_deref(),
                 revision.as_deref(),
             );
 
@@ -70,10 +69,22 @@ fn main() {
                 return;
             }
 
-            println!("Prepare run directory...");
+            println!(
+                "Preparing run directory from `{}'...",
+                match payload_source.code_source {
+                    payload::CodeSource::Local { ref path, .. } => format!("{}", path),
+                    payload::CodeSource::Remote {
+                        ref url,
+                        ref git_revision,
+                    } => format!("{}@{}", url, git_revision),
+                }
+            );
             let run_dir = host.prepare_run_directory(&payload_source.code_source, run_script);
 
-            println!("Prepare config...");
+            println!(
+                "Preparing config from `{}'...",
+                payload_source.config_source.dir_path
+            );
             host.prepare_config_directory(
                 &payload_source.config_source,
                 &experiment_id,
@@ -147,7 +158,7 @@ fn main() {
             )
             .expect("expected host building to always succeed");
 
-            host.sync(
+            let sync_result = host.sync(
                 select_interactively(&host.experiments()),
                 &config.local_host.experiment_base_dir,
                 &match &content {
@@ -159,6 +170,10 @@ fn main() {
                     },
                 },
             );
+            if let Err(err) = sync_result {
+                eprintln!("error while syncing: {}", err);
+                std::process::exit(1);
+            }
         }
         Some(RunnerCommandConfig::ExperimentLog {
             host,

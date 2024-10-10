@@ -103,9 +103,6 @@ pub enum RunnerCommandConfig {
         experiment_group: Option<String>,
 
         #[arg(short = 'c', long)]
-        config: Option<PathBuf>,
-
-        #[arg(short = 'd', long, requires = "config")]
         config_dir: Option<PathBuf>,
 
         #[arg(short = 'v', long)]

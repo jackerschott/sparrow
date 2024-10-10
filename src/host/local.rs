@@ -44,6 +44,14 @@ impl Host for LocalHost {
         }
     }
 
+    fn create_dir(&self, path: &Path) {
+        std::fs::create_dir(path).expect(&format!("expected creation of {path} to work"));
+    }
+
+    fn create_dir_all(&self, path: &Path) {
+        std::fs::create_dir_all(path).expect(&format!("expected creation of {path} to work"));
+    }
+
     fn prepare_quick_run(&self, _options: &QuickRunPrepOptions) {}
     fn quick_run_is_prepared(&self) -> bool {
         true
@@ -113,7 +121,8 @@ impl Host for LocalHost {
         _experiment_id: &ExperimentID,
         _local_base_path: &Path,
         _options: &ExperimentSyncOptions,
-    ) {
+    ) -> Result<(), String> {
+        Ok(())
     }
     fn tail_log(&self, _experiment_id: &ExperimentID, _log_file_path: &Path, _follow: bool) {
         unimplemented!();

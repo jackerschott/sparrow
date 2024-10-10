@@ -59,32 +59,24 @@ pub trait Host {
         let review_dir = TempDir::new().expect("expected temporary directory creation to work");
 
         copy_directory(
-            &config_source.base_path.join(&config_source.dir_path),
-            review_dir.utf8_path(),
+            &config_source.dir_path,
+            &review_dir.utf8_path(),
             SyncOptions::default()
                 .copy_contents()
                 .exclude(&config_source.copy_excludes),
         );
 
         if review {
-            let entry_path = review_dir.utf8_path().join(
-                config_source
-                    .entrypoint_path
-                    .strip_prefix(&config_source.dir_path)
-                    .expect(&format!(
-                        "expected {} to be a subpath of {}",
-                        config_source.dir_path, config_source.entrypoint_path
-                    )),
-            );
+            let entry_path = review_dir.utf8_path().join(&config_source.entrypoint_path);
             review_config(review_dir.utf8_path(), &entry_path);
         }
+
+        self.create_dir_all(&self.config_dir_destination_path(experiment_id));
 
         self.put(
             review_dir.utf8_path(),
             &self.config_dir_destination_path(experiment_id),
-            SyncOptions::default()
-                .copy_contents()
-                .create_missing_path_components(),
+            SyncOptions::default().copy_contents(),
         )
     }
 
@@ -95,6 +87,9 @@ pub trait Host {
     }
 
     fn put(&self, local_path: &Path, host_path: &Path, options: SyncOptions);
+    #[allow(unused)]
+    fn create_dir(&self, path: &Path);
+    fn create_dir_all(&self, path: &Path);
 
     fn prepare_quick_run(&self, options: &QuickRunPrepOptions);
     #[allow(unused)]
@@ -111,7 +106,7 @@ pub trait Host {
         experiment_id: &ExperimentID,
         local_base_path: &Path,
         options: &ExperimentSyncOptions,
-    );
+    ) -> Result<(), String>;
     fn tail_log(&self, experiment_id: &ExperimentID, log_file_path: &Path, follow: bool);
 }
 
@@ -266,10 +261,11 @@ fn prepare_code(code_source: &CodeSource) -> TempDir {
 }
 
 fn review_config(dir_path: &Path, entrypoint_path: &Path) {
-    let editor_name = std::env::var("EDITOR").expect("EDITOR variable should be set");
-    let mut cmd = std::process::Command::new(editor_name);
+    let terminal_name = std::env::var("TERMINAL").expect("expected TERMINAL variable to be set");
+    let editor_name = std::env::var("EDITOR").expect("expected EDITOR variable to be set");
+    let mut cmd = std::process::Command::new(terminal_name);
 
-    cmd.arg(entrypoint_path.as_str());
+    cmd.arg("-e").arg(editor_name).arg(entrypoint_path.as_str());
     for entry in walkdir::WalkDir::new(dir_path) {
         let entry = entry.expect("expected config dir walking to work");
         if entry.path() == entrypoint_path {

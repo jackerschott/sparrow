@@ -278,7 +278,6 @@ impl Host for SlurmClusterHost {
             &run_dir_path,
             SyncOptions::default()
                 .copy_contents()
-                .delete()
                 .info(&vec!["DEL", "REMOVE", "NAME"]),
         );
         return RunDirectory::Remote(run_dir_path);
@@ -286,6 +285,23 @@ impl Host for SlurmClusterHost {
 
     fn put(&self, local_path: &Path, host_path: &Path, options: SyncOptions) {
         self.connection.upload(local_path, host_path, options);
+    }
+
+    fn create_dir(&self, path: &Path) {
+        self.connection
+            .command("mkdir")
+            .arg(path)
+            .status()
+            .expect(&format!("expected mkdir {path} to succeed"));
+    }
+
+    fn create_dir_all(&self, path: &Path) {
+        self.connection
+            .command("mkdir")
+            .arg("-p")
+            .arg(path)
+            .status()
+            .expect(&format!("expected mkdir {path} to succeed"));
     }
 
     fn prepare_quick_run(&self, options: &QuickRunPrepOptions) {
@@ -429,15 +445,33 @@ impl Host for SlurmClusterHost {
         experiment_id: &ExperimentID,
         local_base_path: &Path,
         options: &ExperimentSyncOptions,
-    ) {
+    ) -> Result<(), String> {
+        let local_dest_path = experiment_id.path(local_base_path);
+        let from_remote_marker_path = local_dest_path.join(".from_remote");
+
+        if local_dest_path.exists() && !from_remote_marker_path.exists() {
+            return Err(format!(
+                "{local_dest_path} does exist but the `.from_remote' \
+                marker does not exist, refusing to sync"
+            ));
+        }
+
+        if !local_dest_path.exists() {
+            std::fs::create_dir_all(&local_dest_path).expect(&format!(
+                "expected creation of missing {local_dest_path} components to work"
+            ));
+        }
+
         self.connection.download(
             &experiment_id.path(&self.experiment_base_dir_path),
-            &local_base_path,
+            &local_dest_path,
             SyncOptions::default()
                 .copy_contents()
-                .delete()
-                .exclude(&options.excludes),
+                .exclude(&options.excludes)
+                .info(&vec!["DEL", "REMOVE", "NAME"]),
         );
+
+        Ok(())
     }
     fn tail_log(&self, experiment_id: &ExperimentID, log_file_path: &Path, follow: bool) {
         let log_file_path = experiment_id

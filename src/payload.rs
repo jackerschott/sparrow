@@ -16,7 +16,6 @@ pub enum CodeSource {
 
 #[derive(Clone)]
 pub struct ConfigSource {
-    pub base_path: PathBuf,
     pub entrypoint_path: PathBuf,
     pub dir_path: PathBuf,
     pub copy_excludes: Vec<String>,
@@ -48,34 +47,27 @@ impl PayloadInfo {
 
 pub fn build_payload_source(
     code_source_config: &CodeSourceConfig,
-    config_dir_path: Option<&Path>,
-    config_entry_path: Option<&Path>,
+    config_dir_override_path: Option<&Path>,
     revision: Option<&str>,
 ) -> PayloadSource {
-    let (config_dir_path, config_entry_path) = match (config_dir_path, config_entry_path) {
-        (Some(config_dir_path), Some(config_entry_path)) => (config_dir_path, config_entry_path),
-        (None, Some(config_entry_path)) => (
-            config_entry_path
-                .parent()
-                .expect("expected config path to have a parent"),
-            config_entry_path,
-        ),
-        (None, None) => (
-            code_source_config.config.dir.as_path(),
-            code_source_config.config.entrypoint.as_path(),
-        ),
-        _ => unreachable!(
-            "expected config_dir_path to only be supplied together with config_entry_path"
-        ),
-    };
-    assert!(config_dir_path.is_relative());
-    assert!(config_dir_path != ".");
-    assert!(config_entry_path.is_relative());
-    assert!(config_entry_path.starts_with(config_dir_path));
+    assert!(code_source_config.config.entrypoint.is_relative());
+    assert!(code_source_config.config.dir.is_relative() && code_source_config.config.dir != ".");
+
+    let config_dir_override_path = config_dir_override_path.map(|x| {
+        x.is_relative()
+            .then_some(code_source_config.local.path.join(x))
+            .unwrap_or(x.to_owned())
+    });
+
+    let config_dir_path = config_dir_override_path.unwrap_or(
+        code_source_config
+            .local
+            .path
+            .join(code_source_config.config.dir.clone()),
+    );
 
     let config_source = ConfigSource {
-        base_path: code_source_config.local.path.clone(),
-        entrypoint_path: config_entry_path.to_owned(),
+        entrypoint_path: code_source_config.config.entrypoint.to_owned(),
         dir_path: config_dir_path.to_owned(),
         copy_excludes: code_source_config.local.excludes.clone(),
     };

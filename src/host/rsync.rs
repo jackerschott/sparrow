@@ -23,21 +23,21 @@ pub enum SyncPayload<'a> {
 #[derive(Debug)]
 pub struct SyncOptions {
     quiet: bool,
+    verbose: bool,
     delete: bool,
     excludes: Vec<String>,
     infos: Vec<String>,
     copy_contents: bool,
-    create_missing_path_components: bool,
 }
 impl SyncOptions {
     pub fn default() -> SyncOptions {
         SyncOptions {
             quiet: false,
+            verbose: false,
             delete: false,
             excludes: Vec::new(),
             infos: Vec::new(),
             copy_contents: false,
-            create_missing_path_components: false,
         }
     }
 
@@ -47,6 +47,13 @@ impl SyncOptions {
         self
     }
 
+    #[allow(unused)]
+    pub fn verbose(mut self) -> SyncOptions {
+        self.verbose = true;
+        self
+    }
+
+    #[allow(unused)]
     pub fn delete(mut self) -> SyncOptions {
         self.delete = true;
         self
@@ -73,11 +80,6 @@ impl SyncOptions {
         self.copy_contents = true;
         self
     }
-
-    pub fn create_missing_path_components(mut self) -> SyncOptions {
-        self.create_missing_path_components = true;
-        self
-    }
 }
 
 fn ensure_trailing_slash(path: &Path) -> PathBuf {
@@ -97,12 +99,12 @@ pub fn rsync<'a>(payload: SyncPayload<'a>, options: SyncOptions) -> std::io::Res
         cmd.arg("--quiet");
     }
 
-    if options.delete {
-        cmd.arg("--delete");
+    if options.verbose {
+        cmd.arg("--verbose");
     }
 
-    if options.create_missing_path_components {
-        cmd.arg("--mkpath");
+    if options.delete {
+        cmd.arg("--delete");
     }
 
     if options.infos.len() > 0 {
