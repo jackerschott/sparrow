@@ -17,6 +17,7 @@ pub struct RunnerConfig {
     pub remote_host: RemoteHostConfig,
     pub local_host: LocalHostConfig,
     pub experiment_sync_options: ExperimentSyncOptions,
+    pub results: Vec<PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -148,6 +149,12 @@ pub enum RunnerCommandConfig {
     ExperimentSync {
         #[arg(short = 'c', long, value_enum, default_value = "results")]
         content: ExperimentSyncContent,
+
+        #[arg(short = 'r', long)]
+        show_results: bool,
+
+        #[arg(short = 'f', long, help = "ignore .from_remote marker file")]
+        force: bool,
     },
     ExperimentLog {
         #[arg(short = 'p', long, value_enum, default_value = "remote")]
@@ -159,4 +166,5 @@ pub enum RunnerCommandConfig {
         #[arg(short = 'f', long)]
         follow: bool,
     },
+    ShowResults {},
 }

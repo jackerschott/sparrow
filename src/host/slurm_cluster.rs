@@ -276,9 +276,7 @@ impl Host for SlurmClusterHost {
         self.connection.upload(
             &prep_dir.utf8_path(),
             &run_dir_path,
-            SyncOptions::default()
-                .copy_contents()
-                .info(&vec!["DEL", "REMOVE", "NAME"]),
+            SyncOptions::default().copy_contents(),
         );
         return RunDirectory::Remote(run_dir_path);
     }
@@ -449,7 +447,10 @@ impl Host for SlurmClusterHost {
         let local_dest_path = experiment_id.path(local_base_path);
         let from_remote_marker_path = local_dest_path.join(".from_remote");
 
-        if local_dest_path.exists() && !from_remote_marker_path.exists() {
+        if local_dest_path.exists()
+            && !from_remote_marker_path.exists()
+            && !options.ignore_from_remote_marker
+        {
             return Err(format!(
                 "{local_dest_path} does exist but the `.from_remote' \
                 marker does not exist, refusing to sync"
@@ -468,8 +469,12 @@ impl Host for SlurmClusterHost {
             SyncOptions::default()
                 .copy_contents()
                 .exclude(&options.excludes)
-                .info(&vec!["DEL", "REMOVE", "NAME"]),
+                .progress(),
         );
+
+        std::fs::File::create(&from_remote_marker_path).expect(&format!(
+            "expected creation of {from_remote_marker_path} to work"
+        ));
 
         Ok(())
     }

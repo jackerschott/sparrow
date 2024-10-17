@@ -28,6 +28,7 @@ pub struct SyncOptions {
     excludes: Vec<String>,
     infos: Vec<String>,
     copy_contents: bool,
+    progress: bool,
 }
 impl SyncOptions {
     pub fn default() -> SyncOptions {
@@ -38,6 +39,7 @@ impl SyncOptions {
             excludes: Vec::new(),
             infos: Vec::new(),
             copy_contents: false,
+            progress: false,
         }
     }
 
@@ -80,6 +82,11 @@ impl SyncOptions {
         self.copy_contents = true;
         self
     }
+
+    pub fn progress(mut self) -> SyncOptions {
+        self.progress = true;
+        self
+    }
 }
 
 fn ensure_trailing_slash(path: &Path) -> PathBuf {
@@ -105,6 +112,10 @@ pub fn rsync<'a>(payload: SyncPayload<'a>, options: SyncOptions) -> std::io::Res
 
     if options.delete {
         cmd.arg("--delete");
+    }
+
+    if options.progress {
+        cmd.arg("--progress");
     }
 
     if options.infos.len() > 0 {

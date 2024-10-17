@@ -158,6 +158,7 @@ impl QuickRunPrepOptions {
 
 pub struct ExperimentSyncOptions {
     pub excludes: Vec<String>,
+    pub ignore_from_remote_marker: bool,
 }
 
 #[derive(serde::Serialize, Clone)]

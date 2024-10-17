@@ -128,3 +128,12 @@ impl Host for LocalHost {
         unimplemented!();
     }
 }
+
+pub fn show_result(experiment_id: &ExperimentID, base_path: &Path, path: &Path) {
+    let opener =
+        std::env::var("OPENER").expect("expected the OPENER environment variable to be set");
+    std::process::Command::new(opener)
+        .arg(experiment_id.path(base_path).join(path))
+        .spawn()
+        .expect("expected opener to start successfully");
+}

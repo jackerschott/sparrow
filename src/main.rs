@@ -70,6 +70,16 @@ fn main() {
             }
 
             println!(
+                "Preparing config from `{}'...",
+                payload_source.config_source.dir_path
+            );
+            host.prepare_config_directory(
+                &payload_source.config_source,
+                &experiment_id,
+                !no_config_review,
+            );
+
+            println!(
                 "Preparing run directory from `{}'...",
                 match payload_source.code_source {
                     payload::CodeSource::Local { ref path, .. } => format!("{}", path),
@@ -80,16 +90,6 @@ fn main() {
                 }
             );
             let run_dir = host.prepare_run_directory(&payload_source.code_source, run_script);
-
-            println!(
-                "Preparing config from `{}'...",
-                payload_source.config_source.dir_path
-            );
-            host.prepare_config_directory(
-                &payload_source.config_source,
-                &experiment_id,
-                !no_config_review,
-            );
 
             println!("Run experiment...");
             runner.run(&*host, &run_dir, &experiment_id);
@@ -149,7 +149,11 @@ fn main() {
             .expect("expected host building to always succeed");
             host.attach(select_interactively(&host.running_experiments()));
         }
-        Some(RunnerCommandConfig::ExperimentSync { content }) => {
+        Some(RunnerCommandConfig::ExperimentSync {
+            content,
+            show_results,
+            force,
+        }) => {
             let host = build_host(
                 HostType::Remote,
                 &config.local_host,
@@ -158,15 +162,18 @@ fn main() {
             )
             .expect("expected host building to always succeed");
 
+            let experiment_id = select_interactively(&host.experiments()).clone();
             let sync_result = host.sync(
-                select_interactively(&host.experiments()),
+                &experiment_id,
                 &config.local_host.experiment_base_dir,
                 &match &content {
                     ExperimentSyncContent::Results => host::ExperimentSyncOptions {
                         excludes: config.experiment_sync_options.result_excludes,
+                        ignore_from_remote_marker: force,
                     },
                     ExperimentSyncContent::Models => host::ExperimentSyncOptions {
                         excludes: config.experiment_sync_options.model_excludes,
+                        ignore_from_remote_marker: force,
                     },
                 },
             );
@@ -174,6 +181,31 @@ fn main() {
                 eprintln!("error while syncing: {}", err);
                 std::process::exit(1);
             }
+
+            let result_path = match (show_results, config.results.len()) {
+                (false, _) => {
+                    std::process::exit(0);
+                }
+                (true, 0) => {
+                    println!(
+                        "Requested results, but no results path specified in config. \
+                        Consider adding 'results: [experiment/relative/path/to/results]' \
+                        to the config."
+                    );
+                    std::process::exit(1);
+                }
+                (true, 1) => config.results.first().unwrap(),
+                (true, _) => {
+                    assert!(config.results.len() > 1);
+                    select_interactively(&config.results)
+                }
+            };
+
+            host::local::show_result(
+                &experiment_id,
+                &config.local_host.experiment_base_dir,
+                result_path,
+            );
         }
         Some(RunnerCommandConfig::ExperimentLog {
             host,
@@ -187,6 +219,39 @@ fn main() {
             let log_file_path = select_interactively(&host.log_file_paths(&experiment_id)).clone();
             println!("------ {experiment_id}, {log_file_path} ------");
             host.tail_log(&experiment_id, &log_file_path, follow);
+        }
+        Some(RunnerCommandConfig::ShowResults {}) => {
+            let host = build_host(
+                HostType::Local,
+                &config.local_host,
+                &config.remote_host,
+                false,
+            )
+            .expect("expected host building to always succeed");
+
+            let experiment_id = select_interactively(&host.experiments()).clone();
+
+            let result_path = match config.results.len() {
+                0 => {
+                    println!(
+                        "Requested results, but no results path specified in config. \
+                        Consider adding 'results: [experiment/relative/path/to/results]' \
+                        to the config."
+                    );
+                    std::process::exit(1);
+                }
+                1 => config.results.first().unwrap(),
+                _ => {
+                    assert!(config.results.len() > 1);
+                    select_interactively(&config.results)
+                }
+            };
+
+            host::local::show_result(
+                &experiment_id,
+                &config.local_host.experiment_base_dir,
+                result_path,
+            );
         }
         None => {
             eprintln!("no command specified");
