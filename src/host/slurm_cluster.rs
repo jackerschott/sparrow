@@ -1,6 +1,6 @@
 use super::connection::Connection;
 use super::rsync::SyncOptions;
-use super::{ExperimentID, ExperimentSyncOptions, Host, QuickRunPrepOptions, RunDirectory};
+use super::{RunID, RunOutputSyncOptions, Host, QuickRunPrepOptions, RunDirectory};
 use crate::utils::Utf8Path;
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use std::os::unix::process::CommandExt;
@@ -13,7 +13,7 @@ pub enum QuickRun {
 
 pub struct SlurmClusterHost {
     id: String,
-    experiment_base_dir_path: PathBuf,
+    output_base_dir_path: PathBuf,
     temporary_dir_path: PathBuf,
 
     hostname: String,
@@ -27,7 +27,7 @@ impl SlurmClusterHost {
     pub fn new(
         id: &str,
         hostname: &str,
-        experiment_base_dir_path: &Path,
+        output_base_dir_path: &Path,
         temporary_dir_path: &Path,
         quick_run_config: QuickRun,
     ) -> Self {
@@ -51,7 +51,7 @@ impl SlurmClusterHost {
         return Self {
             id: id.to_owned(),
             hostname: hostname.to_owned(),
-            experiment_base_dir_path: experiment_base_dir_path.to_owned(),
+            output_base_dir_path: output_base_dir_path.to_owned(),
             temporary_dir_path: temporary_dir_path.to_owned(),
             connection,
             quick_run_config,
@@ -259,8 +259,8 @@ impl Host for SlurmClusterHost {
     fn hostname(&self) -> &str {
         &self.hostname
     }
-    fn experiment_base_dir_path(&self) -> &Path {
-        &self.experiment_base_dir_path.as_path()
+    fn output_base_dir_path(&self) -> &Path {
+        &self.output_base_dir_path.as_path()
     }
     fn is_local(&self) -> bool {
         false
@@ -272,7 +272,7 @@ impl Host for SlurmClusterHost {
     fn upload_run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
         let run_dir_path = self
             .temporary_dir_path
-            .join(tmpname("experiment_code.", "", 4));
+            .join(tmpname("run.", "", 4));
         self.connection.upload(
             &prep_dir.utf8_path(),
             &run_dir_path,
@@ -341,11 +341,11 @@ impl Host for SlurmClusterHost {
         self.deallocate_quick_run_node()
     }
 
-    fn experiments(&self) -> Vec<ExperimentID> {
+    fn runs(&self) -> Vec<RunID> {
         let find_output = self
             .connection
             .command("find")
-            .arg(self.experiment_base_dir_path.as_str())
+            .arg(self.output_base_dir_path.as_str())
             .arg("-mindepth")
             .arg("2")
             .arg("-maxdepth")
@@ -353,7 +353,7 @@ impl Host for SlurmClusterHost {
             .arg("-type")
             .arg("d")
             .output()
-            .expect("expected experiment find to succeed");
+            .expect("expected run output find to succeed");
 
         if !find_output.status.success() {
             return Vec::new();
@@ -367,17 +367,17 @@ impl Host for SlurmClusterHost {
             .map(|path| {
                 let name = path.file_name().unwrap();
                 let group = path.parent().unwrap().file_name().unwrap();
-                ExperimentID::new(name, group)
+                RunID::new(name, group)
             })
             .collect()
     }
-    fn running_experiments(&self) -> Vec<ExperimentID> {
+    fn running_runs(&self) -> Vec<RunID> {
         let tmux_output = self
             .connection
             .command("tmux")
             .arg("list-sessions")
             .output()
-            .expect("expected experiment find to succeed");
+            .expect("expected run output find to succeed");
 
         if !tmux_output.status.success() {
             return Vec::new();
@@ -393,13 +393,13 @@ impl Host for SlurmClusterHost {
                 let group = parts.next().unwrap();
                 let name = parts.next().unwrap();
                 assert!(parts.next().is_none());
-                ExperimentID::new(name, group)
+                RunID::new(name, group)
             })
             .collect()
     }
-    fn log_file_paths(&self, experiment_id: &ExperimentID) -> Vec<PathBuf> {
-        let log_path = experiment_id
-            .path(&self.experiment_base_dir_path)
+    fn log_file_paths(&self, run_id: &RunID) -> Vec<PathBuf> {
+        let log_path = run_id
+            .path(&self.output_base_dir_path)
             .join("logs");
 
         let find_output = self
@@ -423,28 +423,28 @@ impl Host for SlurmClusterHost {
             .lines()
             .map(|line| Path::new(line))
             .map(|path| {
-                path.strip_prefix(&experiment_id.path(&self.experiment_base_dir_path))
+                path.strip_prefix(&run_id.path(&self.output_base_dir_path))
                     .unwrap()
                     .to_owned()
             })
             .collect()
     }
-    fn attach(&self, experiment_id: &ExperimentID) {
+    fn attach(&self, run_id: &RunID) {
         std::process::Command::new(std::env::var("SHELL").unwrap())
             .arg("-c")
             .arg(&format!(
-                "ssh -tt {} 'exec tmux attach-session -t {experiment_id}'",
+                "ssh -tt {} 'exec tmux attach-session -t {run_id}'",
                 self.hostname
             ))
             .exec();
     }
     fn sync(
         &self,
-        experiment_id: &ExperimentID,
+        run_id: &RunID,
         local_base_path: &Path,
-        options: &ExperimentSyncOptions,
+        options: &RunOutputSyncOptions,
     ) -> Result<(), String> {
-        let local_dest_path = experiment_id.path(local_base_path);
+        let local_dest_path = run_id.path(local_base_path);
         let from_remote_marker_path = local_dest_path.join(".from_remote");
 
         if local_dest_path.exists()
@@ -464,7 +464,7 @@ impl Host for SlurmClusterHost {
         }
 
         self.connection.download(
-            &experiment_id.path(&self.experiment_base_dir_path),
+            &run_id.path(&self.output_base_dir_path),
             &local_dest_path,
             SyncOptions::default()
                 .copy_contents()
@@ -478,9 +478,9 @@ impl Host for SlurmClusterHost {
 
         Ok(())
     }
-    fn tail_log(&self, experiment_id: &ExperimentID, log_file_path: &Path, follow: bool) {
-        let log_file_path = experiment_id
-            .path(&self.experiment_base_dir_path)
+    fn tail_log(&self, run_id: &RunID, log_file_path: &Path, follow: bool) {
+        let log_file_path = run_id
+            .path(&self.output_base_dir_path)
             .join(log_file_path);
         let cmd = if follow { "tail -Fq" } else { "cat" };
         std::process::Command::new(std::env::var("SHELL").unwrap())

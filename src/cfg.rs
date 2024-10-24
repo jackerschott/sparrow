@@ -4,19 +4,13 @@ use camino::Utf8PathBuf as PathBuf;
 use serde::Deserialize;
 use url::Url;
 
-#[derive(Deserialize, Clone, Copy)]
-pub enum RunnerID {
-    Snakemake,
-}
-
 #[derive(Deserialize)]
 pub struct RunnerConfig {
-    pub experiment_group: String,
-    pub runner: RunnerID,
+    pub run_group: String,
     pub payload: PayloadMappingConfig,
     pub remote_host: RemoteHostConfig,
     pub local_host: LocalHostConfig,
-    pub experiment_sync_options: ExperimentSyncOptions,
+    pub run_output_sync_options: RunOutputSyncOptions,
     pub results: Vec<PathBuf>,
 }
 
@@ -63,18 +57,18 @@ pub struct QuickRunConfig {
 pub struct RemoteHostConfig {
     pub id: String,
     pub hostname: String,
-    pub experiment_base_dir: PathBuf,
+    pub run_output_base_dir: PathBuf,
     pub temporary_dir: PathBuf,
     pub quick_run: QuickRunConfig,
 }
 
 #[derive(Deserialize)]
 pub struct LocalHostConfig {
-    pub experiment_base_dir: PathBuf,
+    pub run_output_base_dir: PathBuf,
 }
 
 #[derive(Deserialize)]
-pub struct ExperimentSyncOptions {
+pub struct RunOutputSyncOptions {
     pub result_excludes: Vec<String>,
     pub model_excludes: Vec<String>,
 }
@@ -96,7 +90,7 @@ pub enum HostType {
 }
 
 #[derive(Deserialize, ValueEnum, Clone, Debug, PartialEq)]
-pub enum ExperimentSyncContent {
+pub enum RunOutputSyncContent {
     Results,
     Models,
 }
@@ -126,10 +120,10 @@ impl std::str::FromStr for RevisionItem {
 pub enum RunnerCommandConfig {
     Run {
         #[arg(short = 'n', long)]
-        experiment_name: String,
+        run_name: String,
 
         #[arg(short = 'g', long)]
-        experiment_group: Option<String>,
+        run_group: Option<String>,
 
         #[arg(short = 'c', long)]
         config_dir: Option<PathBuf>,
@@ -168,20 +162,20 @@ pub enum RunnerCommandConfig {
         gpu_count: Option<u16>,
     },
     RemoteClearQuickRun {},
-    ListExperiments {
+    ListRuns {
         #[arg(short = 'p', long, value_enum, default_value = "remote")]
         host: HostType,
 
         #[arg(short = 'r', long)]
         running: bool,
     },
-    ExperimentAttach {
+    RunAttach {
         #[arg(short = 'q', long)]
         quick: bool,
     },
-    ExperimentSync {
+    RunOutputSync {
         #[arg(short = 'c', long, value_enum, default_value = "results")]
-        content: ExperimentSyncContent,
+        content: RunOutputSyncContent,
 
         #[arg(short = 'r', long)]
         show_results: bool,
@@ -189,7 +183,7 @@ pub enum RunnerCommandConfig {
         #[arg(short = 'f', long, help = "ignore .from_remote marker file")]
         force: bool,
     },
-    ExperimentLog {
+    RunLog {
         #[arg(short = 'p', long, value_enum, default_value = "remote")]
         host: HostType,
 

@@ -1,16 +1,16 @@
 use super::rsync::{copy_directory, SyncOptions};
-use super::{ExperimentID, ExperimentSyncOptions, Host, QuickRunPrepOptions, RunDirectory};
+use super::{RunID, RunOutputSyncOptions, Host, QuickRunPrepOptions, RunDirectory};
 use crate::utils::{AsUtf8Path, Utf8Str};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 
 pub struct LocalHost {
-    experiment_base_dir_path: PathBuf,
+    output_base_dir_path: PathBuf,
 }
 
 impl LocalHost {
-    pub fn new(experiment_base_dir_path: &Path) -> Self {
+    pub fn new(output_base_dir_path: &Path) -> Self {
         return Self {
-            experiment_base_dir_path: PathBuf::from(experiment_base_dir_path),
+            output_base_dir_path: PathBuf::from(output_base_dir_path),
         };
     }
 }
@@ -22,8 +22,8 @@ impl Host for LocalHost {
     fn hostname(&self) -> &str {
         "localhost"
     }
-    fn experiment_base_dir_path(&self) -> &Path {
-        &self.experiment_base_dir_path.as_path()
+    fn output_base_dir_path(&self) -> &Path {
+        &self.output_base_dir_path.as_path()
     }
 
     fn is_local(&self) -> bool {
@@ -59,20 +59,20 @@ impl Host for LocalHost {
     fn wait_for_preparation(&self) {}
     fn clear_preparation(&self) {}
 
-    fn experiments(&self) -> Vec<ExperimentID> {
-        if !self.experiment_base_dir_path.as_path().exists() {
+    fn runs(&self) -> Vec<RunID> {
+        if !self.output_base_dir_path.as_path().exists() {
             return Vec::new();
         }
 
         let mut ids = Vec::new();
-        for group_dir in std::fs::read_dir(self.experiment_base_dir_path.as_path())
-            .expect("expected read of experiment base dir to succeed")
+        for group_dir in std::fs::read_dir(self.output_base_dir_path.as_path())
+            .expect("expected read of run output base dir to succeed")
         {
-            let group_dir = group_dir.expect("expected read of experiment base dir to succeed");
+            let group_dir = group_dir.expect("expected read of run output base dir to succeed");
             for name_dir in std::fs::read_dir(group_dir.path())
-                .expect("expected read of experiment group dir to succeed")
+                .expect("expected read of run output group dir to succeed")
             {
-                let name_dir = name_dir.expect("expected read of experiment group dir to succeed");
+                let name_dir = name_dir.expect("expected read of run output group dir to succeed");
 
                 assert!(group_dir
                     .file_type()
@@ -83,7 +83,7 @@ impl Host for LocalHost {
                     .expect("expected file_type to be accessible")
                     .is_dir());
 
-                ids.push(ExperimentID::new(
+                ids.push(RunID::new(
                     name_dir.file_name().utf8_str(),
                     group_dir.file_name().utf8_str(),
                 ));
@@ -92,12 +92,12 @@ impl Host for LocalHost {
 
         return ids;
     }
-    fn running_experiments(&self) -> Vec<ExperimentID> {
+    fn running_runs(&self) -> Vec<RunID> {
         unimplemented!();
     }
-    fn log_file_paths(&self, experiment_id: &ExperimentID) -> Vec<PathBuf> {
-        let log_path = experiment_id
-            .path(&self.experiment_base_dir_path)
+    fn log_file_paths(&self, run_id: &RunID) -> Vec<PathBuf> {
+        let log_path = run_id
+            .path(&self.output_base_dir_path)
             .join("logs");
         walkdir::WalkDir::new(log_path)
             .into_iter()
@@ -113,27 +113,27 @@ impl Host for LocalHost {
             .map(|entry| entry.path().as_utf8().to_owned())
             .collect()
     }
-    fn attach(&self, _experiment_id: &ExperimentID) {
+    fn attach(&self, _run_id: &RunID) {
         unimplemented!();
     }
     fn sync(
         &self,
-        _experiment_id: &ExperimentID,
+        _run_id: &RunID,
         _local_base_path: &Path,
-        _options: &ExperimentSyncOptions,
+        _options: &RunOutputSyncOptions,
     ) -> Result<(), String> {
         Ok(())
     }
-    fn tail_log(&self, _experiment_id: &ExperimentID, _log_file_path: &Path, _follow: bool) {
+    fn tail_log(&self, _run_id: &RunID, _log_file_path: &Path, _follow: bool) {
         unimplemented!();
     }
 }
 
-pub fn show_result(experiment_id: &ExperimentID, base_path: &Path, path: &Path) {
+pub fn show_result(run_id: &RunID, base_path: &Path, path: &Path) {
     let opener =
         std::env::var("OPENER").expect("expected the OPENER environment variable to be set");
     std::process::Command::new(opener)
-        .arg(experiment_id.path(base_path).join(path))
+        .arg(run_id.path(base_path).join(path))
         .spawn()
         .expect("expected opener to start successfully");
 }

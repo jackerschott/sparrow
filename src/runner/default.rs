@@ -1,15 +1,15 @@
-use super::{ExperimentInfo, Runner};
-use crate::host::{ExperimentID, Host, RunDirectory};
+use super::{RunInfo, Runner};
+use crate::host::{RunID, Host, RunDirectory};
 use crate::utils::{escape_single_quotes, tmux_wrap};
 use std::io::Write;
 use std::os::unix::process::CommandExt;
 use tempfile::NamedTempFile;
 
-pub struct Snakemake {
+pub struct DefaultRunner {
     cmdline: Vec<String>,
 }
 
-impl Snakemake {
+impl DefaultRunner {
     pub fn new(cmdline: &Vec<String>) -> Self {
         return Self {
             cmdline: cmdline.clone(),
@@ -17,9 +17,9 @@ impl Snakemake {
     }
 }
 
-impl Runner for Snakemake {
-    fn create_run_script(&self, experiment_info: &ExperimentInfo) -> NamedTempFile {
-        let context = build_template_context(experiment_info);
+impl Runner for DefaultRunner {
+    fn create_run_script(&self, run_info: &RunInfo) -> NamedTempFile {
+        let context = build_template_context(run_info);
 
         // load file as string
         let run_template_content = std::fs::read_to_string("run.sh.j2")
@@ -41,7 +41,7 @@ impl Runner for Snakemake {
         return run_script;
     }
 
-    fn run(&self, host: &dyn Host, run_dir: &RunDirectory, experiment_id: &ExperimentID) {
+    fn run(&self, host: &dyn Host, run_dir: &RunDirectory, run_id: &RunID) {
         let run_cmd = &format!("cd {} && bash ./run.sh", run_dir.path());
 
         let shell = std::env::var("SHELL").unwrap();
@@ -54,7 +54,7 @@ impl Runner for Snakemake {
         }
 
         let hostname = host.hostname();
-        let tmux_session_name = &format!("{experiment_id}");
+        let tmux_session_name = &format!("{run_id}");
         let run_cmd_wrapped = tmux_wrap(run_cmd, tmux_session_name);
         let run_cmd_wrapped = escape_single_quotes(&run_cmd_wrapped);
         cmd.arg(&format!(
@@ -69,11 +69,11 @@ impl Runner for Snakemake {
     }
 }
 
-fn build_template_context(experiment_info: &ExperimentInfo) -> minijinja::Value {
+fn build_template_context(run_info: &RunInfo) -> minijinja::Value {
     minijinja::context! {
-        experiment_id => experiment_info.id,
-        host => experiment_info.host,
-        runner => experiment_info.runner,
-        payload => experiment_info.payload,
+        run_id => run_info.id,
+        host => run_info.host,
+        runner => run_info.runner,
+        payload => run_info.payload,
     }
 }

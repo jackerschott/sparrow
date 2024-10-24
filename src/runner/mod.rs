@@ -1,10 +1,9 @@
-use crate::cfg::RunnerID;
-use crate::host::{ExperimentID, Host, HostInfo, RunDirectory};
+use crate::host::{RunID, Host, HostInfo, RunDirectory};
 use crate::payload::{PayloadInfo, PayloadMapping};
-use snakemake::Snakemake;
+use default::DefaultRunner;
 use tempfile::NamedTempFile;
 
-pub mod snakemake;
+pub mod default;
 
 #[derive(serde::Serialize)]
 pub struct RunnerInfo {
@@ -12,9 +11,9 @@ pub struct RunnerInfo {
 }
 
 pub trait Runner {
-    fn create_run_script(&self, experiment_info: &ExperimentInfo) -> NamedTempFile;
+    fn create_run_script(&self, run_info: &RunInfo) -> NamedTempFile;
 
-    fn run(&self, host: &dyn Host, run_dir: &RunDirectory, experiment_id: &ExperimentID);
+    fn run(&self, host: &dyn Host, run_dir: &RunDirectory, run_id: &RunID);
 
     fn cmdline(&self) -> &Vec<String>;
 
@@ -25,33 +24,31 @@ pub trait Runner {
     }
 }
 
-pub fn build_runner(id: RunnerID, cmdline: &Vec<String>) -> Box<dyn Runner> {
-    match id {
-        RunnerID::Snakemake => Box::new(Snakemake::new(cmdline)),
-    }
+pub fn build_runner(cmdline: &Vec<String>) -> Box<dyn Runner> {
+    Box::new(DefaultRunner::new(cmdline))
 }
 
-pub struct ExperimentInfo {
-    pub id: ExperimentID,
+pub struct RunInfo {
+    pub id: RunID,
     pub host: HostInfo,
     pub runner: RunnerInfo,
     pub payload: PayloadInfo,
 }
 
-impl ExperimentInfo {
+impl RunInfo {
     pub fn new(
         host: &dyn Host,
         runner: &dyn Runner,
         payload_mapping: &PayloadMapping,
-        experiment_id: &ExperimentID,
-    ) -> ExperimentInfo {
-        ExperimentInfo {
-            id: experiment_id.clone(),
+        run_id: &RunID,
+    ) -> RunInfo {
+        RunInfo {
+            id: run_id.clone(),
             host: host.info(),
             runner: runner.info(),
             payload: PayloadInfo::new(
                 payload_mapping,
-                &host.config_dir_destination_path(&experiment_id),
+                &host.config_dir_destination_path(&run_id),
             ),
         }
     }

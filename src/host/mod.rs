@@ -17,7 +17,7 @@ use url::Url;
 pub trait Host {
     fn id(&self) -> &str;
     fn hostname(&self) -> &str;
-    fn experiment_base_dir_path(&self) -> &Path;
+    fn output_base_dir_path(&self) -> &Path;
     fn is_local(&self) -> bool;
     fn is_configured_for_quick_run(&self) -> bool;
 
@@ -25,7 +25,7 @@ pub trait Host {
         HostInfo {
             id: self.id().to_owned(),
             hostname: self.hostname().to_owned(),
-            experiment_base_dir_path: self.experiment_base_dir_path().to_owned(),
+            output_base_dir_path: self.output_base_dir_path().to_owned(),
             is_local: self.is_local(),
             is_configured_for_quick_run: self.is_configured_for_quick_run(),
         }
@@ -57,7 +57,7 @@ pub trait Host {
     fn prepare_config_directory(
         &self,
         config_mapping: &ConfigSource,
-        experiment_id: &ExperimentID,
+        run_id: &RunID,
         review: bool,
     ) {
         let review_dir = TempDir::new().expect("expected temporary directory creation to work");
@@ -73,18 +73,18 @@ pub trait Host {
             review_config(review_dir.utf8_path(), &entry_path);
         }
 
-        self.create_dir_all(&self.config_dir_destination_path(experiment_id));
+        self.create_dir_all(&self.config_dir_destination_path(run_id));
 
         self.put(
             review_dir.utf8_path(),
-            &self.config_dir_destination_path(experiment_id),
+            &self.config_dir_destination_path(run_id),
             SyncOptions::default().copy_contents(),
         )
     }
 
-    fn config_dir_destination_path(&self, experiment_id: &ExperimentID) -> PathBuf {
-        experiment_id
-            .path(self.experiment_base_dir_path())
+    fn config_dir_destination_path(&self, run_id: &RunID) -> PathBuf {
+        run_id
+            .path(self.output_base_dir_path())
             .join("reproduce_info/config")
     }
 
@@ -99,17 +99,17 @@ pub trait Host {
     fn wait_for_preparation(&self);
     fn clear_preparation(&self);
 
-    fn experiments(&self) -> Vec<ExperimentID>;
-    fn running_experiments(&self) -> Vec<ExperimentID>;
-    fn log_file_paths(&self, experiment_id: &ExperimentID) -> Vec<PathBuf>;
-    fn attach(&self, experiment_id: &ExperimentID);
+    fn runs(&self) -> Vec<RunID>;
+    fn running_runs(&self) -> Vec<RunID>;
+    fn log_file_paths(&self, run_id: &RunID) -> Vec<PathBuf>;
+    fn attach(&self, run_id: &RunID);
     fn sync(
         &self,
-        experiment_id: &ExperimentID,
+        run_id: &RunID,
         local_base_path: &Path,
-        options: &ExperimentSyncOptions,
+        options: &RunOutputSyncOptions,
     ) -> Result<(), String>;
-    fn tail_log(&self, experiment_id: &ExperimentID, log_file_path: &Path, follow: bool);
+    fn tail_log(&self, run_id: &RunID, log_file_path: &Path, follow: bool);
 }
 
 pub enum RunDirectory {
@@ -158,18 +158,18 @@ impl QuickRunPrepOptions {
     }
 }
 
-pub struct ExperimentSyncOptions {
+pub struct RunOutputSyncOptions {
     pub excludes: Vec<String>,
     pub ignore_from_remote_marker: bool,
 }
 
 #[derive(serde::Serialize, Clone)]
-pub struct ExperimentID {
+pub struct RunID {
     pub name: String,
     pub group: String,
 }
 
-impl ExperimentID {
+impl RunID {
     pub fn new<S: AsRef<str>>(name: S, group: S) -> Self {
         Self {
             name: name.as_ref().to_owned(),
@@ -185,7 +185,7 @@ impl ExperimentID {
     }
 }
 
-impl std::fmt::Display for ExperimentID {
+impl std::fmt::Display for RunID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}/{}", self.group, self.name)
     }
@@ -195,7 +195,7 @@ impl std::fmt::Display for ExperimentID {
 pub struct HostInfo {
     pub id: String,
     pub hostname: String,
-    pub experiment_base_dir_path: PathBuf,
+    pub output_base_dir_path: PathBuf,
     pub is_local: bool,
     pub is_configured_for_quick_run: bool,
 }
@@ -212,7 +212,7 @@ pub fn build_host(
 
     match host_type {
         HostType::Local => Ok(Box::new(LocalHost::new(
-            local_config.experiment_base_dir.as_path(),
+            local_config.run_output_base_dir.as_path(),
         ))),
         HostType::Remote => {
             let quick_run_config = if !configure_for_quick_run {
@@ -224,7 +224,7 @@ pub fn build_host(
             Ok(Box::new(SlurmClusterHost::new(
                 remote_config.id.as_str(),
                 remote_config.hostname.as_str(),
-                remote_config.experiment_base_dir.as_path(),
+                remote_config.run_output_base_dir.as_path(),
                 remote_config.temporary_dir.as_path(),
                 quick_run_config,
             )))
