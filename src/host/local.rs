@@ -1,5 +1,5 @@
 use super::rsync::{copy_directory, SyncOptions};
-use super::{RunID, RunOutputSyncOptions, Host, QuickRunPrepOptions, RunDirectory};
+use super::{Host, QuickRunPrepOptions, RunDirectory, RunID, RunOutputSyncOptions};
 use crate::utils::{AsUtf8Path, Utf8Str};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 
@@ -96,9 +96,7 @@ impl Host for LocalHost {
         unimplemented!();
     }
     fn log_file_paths(&self, run_id: &RunID) -> Vec<PathBuf> {
-        let log_path = run_id
-            .path(&self.output_base_dir_path)
-            .join("logs");
+        let log_path = run_id.path(&self.output_base_dir_path).join("logs");
         walkdir::WalkDir::new(log_path)
             .into_iter()
             .filter_map(|entry| entry.ok())

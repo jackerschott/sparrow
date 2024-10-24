@@ -13,7 +13,7 @@ use cfg::*;
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
-use host::{build_host, RunID, QuickRunPrepOptions};
+use host::{build_host, QuickRunPrepOptions, RunID};
 use payload::build_payload_mapping;
 use runner::{build_runner, RunInfo};
 use utils::AsUtf8Path;
@@ -64,7 +64,7 @@ fn main() {
                     eprintln!("error while building host: {}", err);
                     std::process::exit(1);
                 });
-            let runner = build_runner(&remainder);
+            let runner = build_runner(&remainder, &config.environment_variable_transfer_requests);
 
             let payload_mapping = build_payload_mapping(
                 &config.payload,
@@ -78,8 +78,7 @@ fn main() {
                     .expect("expected config path to have a parent"),
             );
 
-            let run_info =
-                RunInfo::new(&*host, &*runner, &payload_mapping, &run_id);
+            let run_info = RunInfo::new(&*host, &*runner, &payload_mapping, &run_id);
             let run_script = runner.create_run_script(&run_info);
             if only_print_run_script {
                 print_run_script(run_script);
@@ -96,13 +95,13 @@ fn main() {
                 !no_config_review,
             );
 
-            println!("Copying code to run directory from");
+            println!("Copying code to run directory from...");
             payload_mapping
                 .code_mappings
                 .iter()
                 .for_each(|code_mapping| {
                     println!(
-                        "{}: {}...",
+                        "    {}: {}",
                         code_mapping.id,
                         match code_mapping.source {
                             payload::CodeSource::Local { ref path, .. } => format!("{}", path),
@@ -225,11 +224,7 @@ fn main() {
                 }
             };
 
-            host::local::show_result(
-                &run_id,
-                &config.local_host.run_output_base_dir,
-                result_path,
-            );
+            host::local::show_result(&run_id, &config.local_host.run_output_base_dir, result_path);
         }
         Some(RunnerCommandConfig::RunLog {
             host,
@@ -271,11 +266,7 @@ fn main() {
                 }
             };
 
-            host::local::show_result(
-                &run_id,
-                &config.local_host.run_output_base_dir,
-                result_path,
-            );
+            host::local::show_result(&run_id, &config.local_host.run_output_base_dir, result_path);
         }
         None => {
             eprintln!("no command specified");

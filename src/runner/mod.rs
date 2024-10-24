@@ -1,4 +1,4 @@
-use crate::host::{RunID, Host, HostInfo, RunDirectory};
+use crate::host::{Host, HostInfo, RunDirectory, RunID};
 use crate::payload::{PayloadInfo, PayloadMapping};
 use default::DefaultRunner;
 use tempfile::NamedTempFile;
@@ -24,8 +24,14 @@ pub trait Runner {
     }
 }
 
-pub fn build_runner(cmdline: &Vec<String>) -> Box<dyn Runner> {
-    Box::new(DefaultRunner::new(cmdline))
+pub fn build_runner(
+    cmdline: &Vec<String>,
+    environment_variable_transfer_requests: &Vec<String>,
+) -> Box<dyn Runner> {
+    Box::new(DefaultRunner::new(
+        cmdline,
+        environment_variable_transfer_requests,
+    ))
 }
 
 pub struct RunInfo {
@@ -46,10 +52,7 @@ impl RunInfo {
             id: run_id.clone(),
             host: host.info(),
             runner: runner.info(),
-            payload: PayloadInfo::new(
-                payload_mapping,
-                &host.config_dir_destination_path(&run_id),
-            ),
+            payload: PayloadInfo::new(payload_mapping, &host.config_dir_destination_path(&run_id)),
         }
     }
 }

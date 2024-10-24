@@ -12,6 +12,7 @@ pub struct RunnerConfig {
     pub local_host: LocalHostConfig,
     pub run_output_sync_options: RunOutputSyncOptions,
     pub results: Vec<PathBuf>,
+    pub environment_variable_transfer_requests: Vec<String>,
 }
 
 #[derive(Deserialize)]

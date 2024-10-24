@@ -1,6 +1,6 @@
 use super::connection::Connection;
 use super::rsync::SyncOptions;
-use super::{RunID, RunOutputSyncOptions, Host, QuickRunPrepOptions, RunDirectory};
+use super::{Host, QuickRunPrepOptions, RunDirectory, RunID, RunOutputSyncOptions};
 use crate::utils::Utf8Path;
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use std::os::unix::process::CommandExt;
@@ -270,9 +270,7 @@ impl Host for SlurmClusterHost {
     }
 
     fn upload_run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
-        let run_dir_path = self
-            .temporary_dir_path
-            .join(tmpname("run.", "", 4));
+        let run_dir_path = self.temporary_dir_path.join(tmpname("run.", "", 4));
         self.connection.upload(
             &prep_dir.utf8_path(),
             &run_dir_path,
@@ -398,9 +396,7 @@ impl Host for SlurmClusterHost {
             .collect()
     }
     fn log_file_paths(&self, run_id: &RunID) -> Vec<PathBuf> {
-        let log_path = run_id
-            .path(&self.output_base_dir_path)
-            .join("logs");
+        let log_path = run_id.path(&self.output_base_dir_path).join("logs");
 
         let find_output = self
             .connection
@@ -479,9 +475,7 @@ impl Host for SlurmClusterHost {
         Ok(())
     }
     fn tail_log(&self, run_id: &RunID, log_file_path: &Path, follow: bool) {
-        let log_file_path = run_id
-            .path(&self.output_base_dir_path)
-            .join(log_file_path);
+        let log_file_path = run_id.path(&self.output_base_dir_path).join(log_file_path);
         let cmd = if follow { "tail -Fq" } else { "cat" };
         std::process::Command::new(std::env::var("SHELL").unwrap())
             .arg("-c")

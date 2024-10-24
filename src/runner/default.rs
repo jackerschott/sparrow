@@ -1,5 +1,5 @@
 use super::{RunInfo, Runner};
-use crate::host::{RunID, Host, RunDirectory};
+use crate::host::{Host, RunDirectory, RunID};
 use crate::utils::{escape_single_quotes, tmux_wrap};
 use std::io::Write;
 use std::os::unix::process::CommandExt;
@@ -7,12 +7,17 @@ use tempfile::NamedTempFile;
 
 pub struct DefaultRunner {
     cmdline: Vec<String>,
+    environment_variable_transfer_requests: Vec<String>,
 }
 
 impl DefaultRunner {
-    pub fn new(cmdline: &Vec<String>) -> Self {
+    pub fn new(
+        cmdline: &Vec<String>,
+        environment_variable_transfer_requests: &Vec<String>,
+    ) -> Self {
         return Self {
             cmdline: cmdline.clone(),
+            environment_variable_transfer_requests: environment_variable_transfer_requests.clone(),
         };
     }
 }
@@ -48,6 +53,22 @@ impl Runner for DefaultRunner {
         let mut cmd = std::process::Command::new(shell);
         cmd.arg("-c");
 
+        let environment_variables_to_transfer = self
+            .environment_variable_transfer_requests
+            .iter()
+            .map(|variable_name| {
+                let variable_value = std::env::var(variable_name).unwrap_or_else(|err| {
+                    eprintln!(
+                        "refusing to run; \
+                        expected {variable_name} to be retreivable from \
+                        the local environment because of a transfer request: {err}"
+                    );
+                    std::process::exit(1);
+                });
+                (variable_name, variable_value)
+            })
+            .collect::<Vec<_>>();
+
         if host.is_local() {
             cmd.arg(run_cmd).exec();
             return;
@@ -57,8 +78,17 @@ impl Runner for DefaultRunner {
         let tmux_session_name = &format!("{run_id}");
         let run_cmd_wrapped = tmux_wrap(run_cmd, tmux_session_name);
         let run_cmd_wrapped = escape_single_quotes(&run_cmd_wrapped);
+
+        let run_cmd_wrapped_with_variables = format!(
+            "{} {run_cmd_wrapped}",
+            environment_variables_to_transfer
+                .iter()
+                .map(|(name, value)| { escape_single_quotes(&format!("{name}='{value}'")) })
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
         cmd.arg(&format!(
-            "ssh -tt {hostname} 'cd {} && {run_cmd_wrapped}'",
+            "ssh -tt {hostname} 'cd {} && {run_cmd_wrapped_with_variables}'",
             run_dir.path()
         ))
         .exec();

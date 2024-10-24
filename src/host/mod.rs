@@ -25,7 +25,7 @@ pub trait Host {
         HostInfo {
             id: self.id().to_owned(),
             hostname: self.hostname().to_owned(),
-            output_base_dir_path: self.output_base_dir_path().to_owned(),
+            run_output_base_dir_path: self.output_base_dir_path().to_owned(),
             is_local: self.is_local(),
             is_configured_for_quick_run: self.is_configured_for_quick_run(),
         }
@@ -195,7 +195,7 @@ impl std::fmt::Display for RunID {
 pub struct HostInfo {
     pub id: String,
     pub hostname: String,
-    pub output_base_dir_path: PathBuf,
+    pub run_output_base_dir_path: PathBuf,
     pub is_local: bool,
     pub is_configured_for_quick_run: bool,
 }
