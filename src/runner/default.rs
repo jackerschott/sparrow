@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use super::{RunInfo, Runner};
 use crate::host::{Host, RunDirectory, RunID};
 use crate::utils::{escape_single_quotes, tmux_wrap};
@@ -8,16 +9,19 @@ use tempfile::NamedTempFile;
 pub struct DefaultRunner {
     cmdline: Vec<String>,
     environment_variable_transfer_requests: Vec<String>,
+    config: HashMap<String, String>,
 }
 
 impl DefaultRunner {
     pub fn new(
         cmdline: &Vec<String>,
         environment_variable_transfer_requests: &Vec<String>,
+        config: &HashMap<String, String>,
     ) -> Self {
         return Self {
             cmdline: cmdline.clone(),
             environment_variable_transfer_requests: environment_variable_transfer_requests.clone(),
+            config: config.clone(),
         };
     }
 }
@@ -96,6 +100,10 @@ impl Runner for DefaultRunner {
 
     fn cmdline(&self) -> &Vec<String> {
         return &self.cmdline;
+    }
+
+    fn config(&self) -> &HashMap<String, String> {
+        return &self.config;
     }
 }
 

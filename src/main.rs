@@ -30,7 +30,7 @@ fn main() {
         .expect("expected current directory to accessible")
         .as_utf8()
         .join("run");
-    let config: RunnerConfig = Config::builder()
+    let config: GlobalConfig = Config::builder()
         .add_source(File::new("run", FileFormat::Yaml))
         .build()
         .unwrap_or_else(|err| {
@@ -64,7 +64,7 @@ fn main() {
                     eprintln!("error while building host: {}", err);
                     std::process::exit(1);
                 });
-            let runner = build_runner(&remainder, &config.environment_variable_transfer_requests);
+            let runner = build_runner(&remainder, &config.runner);
 
             let payload_mapping = build_payload_mapping(
                 &config.payload,

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use crate::cfg::RunnerConfig;
 use crate::host::{Host, HostInfo, RunDirectory, RunID};
 use crate::payload::{PayloadInfo, PayloadMapping};
 use default::DefaultRunner;
@@ -8,6 +10,7 @@ pub mod default;
 #[derive(serde::Serialize)]
 pub struct RunnerInfo {
     cmdline: String,
+    config: HashMap<String, String>,
 }
 
 pub trait Runner {
@@ -16,21 +19,24 @@ pub trait Runner {
     fn run(&self, host: &dyn Host, run_dir: &RunDirectory, run_id: &RunID);
 
     fn cmdline(&self) -> &Vec<String>;
+    fn config(&self) -> &HashMap<String, String>;
 
     fn info(&self) -> RunnerInfo {
         RunnerInfo {
             cmdline: self.cmdline().join(" "),
+            config: self.config().clone(),
         }
     }
 }
 
 pub fn build_runner(
     cmdline: &Vec<String>,
-    environment_variable_transfer_requests: &Vec<String>,
+    config: &RunnerConfig,
 ) -> Box<dyn Runner> {
     Box::new(DefaultRunner::new(
         cmdline,
-        environment_variable_transfer_requests,
+        &config.environment_variable_transfer_requests,
+        &config.config,
     ))
 }
 

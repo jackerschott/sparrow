@@ -1,18 +1,18 @@
+use std::collections::HashMap;
 use clap::{Parser, Subcommand, ValueEnum};
-
 use camino::Utf8PathBuf as PathBuf;
 use serde::Deserialize;
 use url::Url;
 
 #[derive(Deserialize)]
-pub struct RunnerConfig {
+pub struct GlobalConfig {
     pub run_group: String,
     pub payload: PayloadMappingConfig,
     pub remote_host: RemoteHostConfig,
     pub local_host: LocalHostConfig,
     pub run_output_sync_options: RunOutputSyncOptions,
     pub results: Vec<PathBuf>,
-    pub environment_variable_transfer_requests: Vec<String>,
+    pub runner: RunnerConfig,
 }
 
 #[derive(Deserialize)]
@@ -72,6 +72,12 @@ pub struct LocalHostConfig {
 pub struct RunOutputSyncOptions {
     pub result_excludes: Vec<String>,
     pub model_excludes: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct RunnerConfig {
+    pub config: HashMap<String, String>,
+    pub environment_variable_transfer_requests: Vec<String>,
 }
 
 #[derive(Parser)]
