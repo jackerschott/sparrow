@@ -1,6 +1,6 @@
 use crate::cfg::RunnerID;
 use crate::host::{ExperimentID, Host, HostInfo, RunDirectory};
-use crate::payload::{PayloadInfo, PayloadSource};
+use crate::payload::{PayloadInfo, PayloadMapping};
 use snakemake::Snakemake;
 use tempfile::NamedTempFile;
 
@@ -42,7 +42,7 @@ impl ExperimentInfo {
     pub fn new(
         host: &dyn Host,
         runner: &dyn Runner,
-        payload_source: &PayloadSource,
+        payload_mapping: &PayloadMapping,
         experiment_id: &ExperimentID,
     ) -> ExperimentInfo {
         ExperimentInfo {
@@ -50,7 +50,7 @@ impl ExperimentInfo {
             host: host.info(),
             runner: runner.info(),
             payload: PayloadInfo::new(
-                payload_source,
+                payload_mapping,
                 &host.config_dir_destination_path(&experiment_id),
             ),
         }

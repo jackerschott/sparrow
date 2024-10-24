@@ -269,7 +269,7 @@ impl Host for SlurmClusterHost {
         self.hostname.ends_with("-quick")
     }
 
-    fn run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
+    fn upload_run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
         let run_dir_path = self
             .temporary_dir_path
             .join(tmpname("experiment_code.", "", 4));

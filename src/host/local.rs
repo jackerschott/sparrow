@@ -34,7 +34,7 @@ impl Host for LocalHost {
         true
     }
 
-    fn run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
+    fn upload_run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
         return RunDirectory::Local(prep_dir);
     }
 

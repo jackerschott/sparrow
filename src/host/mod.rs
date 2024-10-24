@@ -5,7 +5,7 @@ pub mod slurm_cluster;
 
 use super::utils::Utf8Path;
 use crate::cfg::{HostType, LocalHostConfig, QuickRunConfig, RemoteHostConfig};
-use crate::payload::{CodeSource, ConfigSource};
+use crate::payload::{CodeMapping, CodeSource, ConfigSource};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use local::LocalHost;
 use rsync::{copy_directory, SyncOptions};
@@ -33,10 +33,14 @@ pub trait Host {
 
     fn prepare_run_directory(
         &self,
-        code_source: &CodeSource,
+        code_mappings: &Vec<CodeMapping>,
         run_script: NamedTempFile,
     ) -> RunDirectory {
-        let payload_prep_dir = prepare_code(&code_source);
+        let payload_prep_dir = TempDir::new().expect("failed to create temporary directory");
+
+        for code_mapping in code_mappings {
+            prepare_code(code_mapping, payload_prep_dir.utf8_path());
+        }
 
         let run_script_dest_path = payload_prep_dir.utf8_path().join("run.sh");
         std::fs::copy(&run_script, &run_script_dest_path).expect(&format!(
@@ -45,29 +49,27 @@ pub trait Host {
             run_script_dest_path
         ));
 
-        return self.run_dir(payload_prep_dir);
+        return self.upload_run_dir(payload_prep_dir);
     }
 
-    fn run_dir(&self, prep_dir_path: TempDir) -> RunDirectory;
+    fn upload_run_dir(&self, prep_dir_path: TempDir) -> RunDirectory;
 
     fn prepare_config_directory(
         &self,
-        config_source: &ConfigSource,
+        config_mapping: &ConfigSource,
         experiment_id: &ExperimentID,
         review: bool,
     ) {
         let review_dir = TempDir::new().expect("expected temporary directory creation to work");
 
         copy_directory(
-            &config_source.dir_path,
+            &config_mapping.dir_path,
             &review_dir.utf8_path(),
-            SyncOptions::default()
-                .copy_contents()
-                .exclude(&config_source.copy_excludes),
+            SyncOptions::default().copy_contents(),
         );
 
         if review {
-            let entry_path = review_dir.utf8_path().join(&config_source.entrypoint_path);
+            let entry_path = review_dir.utf8_path().join(&config_mapping.entrypoint_path);
             review_config(review_dir.utf8_path(), &entry_path);
         }
 
@@ -230,16 +232,17 @@ pub fn build_host(
     }
 }
 
-fn prepare_code(code_source: &CodeSource) -> TempDir {
-    let prep_dir = TempDir::new().expect("failed to create temporary directory");
-    match code_source {
+fn prepare_code(code_mapping: &CodeMapping, prep_dir: &Path) {
+    assert!(code_mapping.target.is_relative());
+
+    match &code_mapping.source {
         CodeSource::Local {
             path,
             copy_excludes,
         } => {
             copy_directory(
                 path.as_path(),
-                prep_dir.utf8_path(),
+                &prep_dir.join(code_mapping.target.as_path()),
                 SyncOptions::default()
                     .copy_contents()
                     .exclude(&copy_excludes),
@@ -249,7 +252,7 @@ fn prepare_code(code_source: &CodeSource) -> TempDir {
             unpack_revision(
                 &url,
                 git_revision.as_str(),
-                prep_dir.utf8_path(),
+                &prep_dir.join(code_mapping.target.as_path()),
                 Path::new(&format!(
                     "{}/.ssh/id_ed25519",
                     std::env::var("HOME").unwrap()
@@ -257,8 +260,6 @@ fn prepare_code(code_source: &CodeSource) -> TempDir {
             );
         }
     }
-
-    return prep_dir;
 }
 
 fn review_config(dir_path: &Path, entrypoint_path: &Path) {

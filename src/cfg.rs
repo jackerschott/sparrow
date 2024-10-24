@@ -13,7 +13,7 @@ pub enum RunnerID {
 pub struct RunnerConfig {
     pub experiment_group: String,
     pub runner: RunnerID,
-    pub code_source: CodeSourceConfig,
+    pub payload: PayloadMappingConfig,
     pub remote_host: RemoteHostConfig,
     pub local_host: LocalHostConfig,
     pub experiment_sync_options: ExperimentSyncOptions,
@@ -32,16 +32,23 @@ pub struct RemoteCodeSourceConfig {
 }
 
 #[derive(Deserialize)]
-pub struct ConfigCodeSourceConfig {
+pub struct CodeMappingConfig {
+    pub id: String,
+    pub local: LocalCodeSourceConfig,
+    pub remote: RemoteCodeSourceConfig,
+    pub target: PathBuf,
+}
+
+#[derive(Deserialize)]
+pub struct ConfigSourceConfig {
     pub dir: PathBuf,
     pub entrypoint: PathBuf,
 }
 
 #[derive(Deserialize)]
-pub struct CodeSourceConfig {
-    pub local: LocalCodeSourceConfig,
-    pub remote: RemoteCodeSourceConfig,
-    pub config: ConfigCodeSourceConfig,
+pub struct PayloadMappingConfig {
+    pub code: Vec<CodeMappingConfig>,
+    pub config: ConfigSourceConfig,
 }
 
 #[derive(Deserialize)]
@@ -94,6 +101,27 @@ pub enum ExperimentSyncContent {
     Models,
 }
 
+#[derive(Clone)]
+pub struct RevisionItem {
+    pub id: String,
+    pub revision: String,
+}
+
+impl std::str::FromStr for RevisionItem {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split('=');
+        let item = RevisionItem {
+            id: parts.next().ok_or("missing id")?.to_string(),
+            revision: parts.next().ok_or("missing revision")?.to_string(),
+        };
+        parts.next().ok_or("unexpected trailing data")?;
+
+        return Ok(item);
+    }
+}
+
 #[derive(Subcommand)]
 pub enum RunnerCommandConfig {
     Run {
@@ -106,8 +134,13 @@ pub enum RunnerCommandConfig {
         #[arg(short = 'c', long)]
         config_dir: Option<PathBuf>,
 
-        #[arg(short = 'v', long)]
-        revision: Option<String>,
+        #[arg(
+            short = 'v',
+            long,
+            help = "can be used multiple times to specify the revision of each\n\
+                code source to use in the format <code_source_id>=<revision>"
+        )]
+        revisions: Vec<RevisionItem>,
 
         #[arg(short = 'p', long, value_enum, default_value = "local")]
         host: HostType,

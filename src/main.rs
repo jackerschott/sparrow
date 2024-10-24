@@ -14,8 +14,9 @@ use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
 use host::{build_host, ExperimentID, QuickRunPrepOptions};
-use payload::build_payload_source;
+use payload::build_payload_mapping;
 use runner::{build_runner, ExperimentInfo};
+use utils::AsUtf8Path;
 
 fn main() {
     let cli = Cli::parse();
@@ -25,19 +26,29 @@ fn main() {
         return;
     }
 
+    let config_path = std::env::current_dir()
+        .expect("expected current directory to accessible")
+        .as_utf8()
+        .join("run");
     let config: RunnerConfig = Config::builder()
         .add_source(File::new("run", FileFormat::Yaml))
         .build()
-        .expect("could not build configuration")
+        .unwrap_or_else(|err| {
+            eprintln!("could not build configuration: {}", err);
+            std::process::exit(1);
+        })
         .try_deserialize()
-        .expect("Could not deserialize configuration");
+        .unwrap_or_else(|err| {
+            eprintln!("could not deserialize configuration: {}", err);
+            std::process::exit(1);
+        });
 
     match cli.command {
         Some(RunnerCommandConfig::Run {
             experiment_name,
             experiment_group,
             config_dir,
-            revision,
+            revisions,
             host,
             enforce_quick,
             no_config_review,
@@ -55,14 +66,20 @@ fn main() {
                 });
             let runner = build_runner(config.runner, &remainder);
 
-            let payload_source = build_payload_source(
-                &config.code_source,
+            let payload_mapping = build_payload_mapping(
+                &config.payload,
                 config_dir.as_deref(),
-                revision.as_deref(),
+                &revisions
+                    .iter()
+                    .map(|item| (item.id.clone(), item.revision.clone()))
+                    .collect(),
+                config_path
+                    .parent()
+                    .expect("expected config path to have a parent"),
             );
 
             let experiment_info =
-                ExperimentInfo::new(&*host, &*runner, &payload_source, &experiment_id);
+                ExperimentInfo::new(&*host, &*runner, &payload_mapping, &experiment_id);
             let run_script = runner.create_run_script(&experiment_info);
             if only_print_run_script {
                 print_run_script(run_script);
@@ -70,26 +87,33 @@ fn main() {
             }
 
             println!(
-                "Preparing config from `{}'...",
-                payload_source.config_source.dir_path
+                "Copying config to run directory from `{}'...",
+                payload_mapping.config_source.dir_path
             );
             host.prepare_config_directory(
-                &payload_source.config_source,
+                &payload_mapping.config_source,
                 &experiment_id,
                 !no_config_review,
             );
 
-            println!(
-                "Preparing run directory from `{}'...",
-                match payload_source.code_source {
-                    payload::CodeSource::Local { ref path, .. } => format!("{}", path),
-                    payload::CodeSource::Remote {
-                        ref url,
-                        ref git_revision,
-                    } => format!("{}@{}", url, git_revision),
-                }
-            );
-            let run_dir = host.prepare_run_directory(&payload_source.code_source, run_script);
+            println!("Copying code to run directory from");
+            payload_mapping
+                .code_mappings
+                .iter()
+                .for_each(|code_mapping| {
+                    println!(
+                        "{}: {}...",
+                        code_mapping.id,
+                        match code_mapping.source {
+                            payload::CodeSource::Local { ref path, .. } => format!("{}", path),
+                            payload::CodeSource::Remote {
+                                ref url,
+                                ref git_revision,
+                            } => format!("{}@{}", url, git_revision),
+                        }
+                    );
+                });
+            let run_dir = host.prepare_run_directory(&payload_mapping.code_mappings, run_script);
 
             println!("Run experiment...");
             runner.run(&*host, &run_dir, &experiment_id);
