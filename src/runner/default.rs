@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use super::{RunInfo, Runner};
 use crate::host::{Host, RunDirectory, RunID};
 use crate::utils::{escape_single_quotes, tmux_wrap};
+use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::process::CommandExt;
 use tempfile::NamedTempFile;
@@ -113,5 +113,6 @@ fn build_template_context(run_info: &RunInfo) -> minijinja::Value {
         host => run_info.host,
         runner => run_info.runner,
         payload => run_info.payload,
+        output_path => run_info.output_path,
     }
 }

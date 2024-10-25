@@ -1,8 +1,9 @@
-use std::collections::HashMap;
 use crate::cfg::RunnerConfig;
 use crate::host::{Host, HostInfo, RunDirectory, RunID};
 use crate::payload::{PayloadInfo, PayloadMapping};
+use camino::Utf8PathBuf as PathBuf;
 use default::DefaultRunner;
+use std::collections::HashMap;
 use tempfile::NamedTempFile;
 
 pub mod default;
@@ -29,14 +30,14 @@ pub trait Runner {
     }
 }
 
-pub fn build_runner(
-    cmdline: &Vec<String>,
-    config: &RunnerConfig,
-) -> Box<dyn Runner> {
+pub fn build_runner(cmdline: &Vec<String>, config: Option<RunnerConfig>) -> Box<dyn Runner> {
+    let config = config.unwrap_or_default();
     Box::new(DefaultRunner::new(
         cmdline,
-        &config.environment_variable_transfer_requests,
-        &config.config,
+        &config
+            .environment_variable_transfer_requests
+            .unwrap_or(Vec::new()),
+        &config.config.unwrap_or(HashMap::new()),
     ))
 }
 
@@ -45,6 +46,7 @@ pub struct RunInfo {
     pub host: HostInfo,
     pub runner: RunnerInfo,
     pub payload: PayloadInfo,
+    pub output_path: PathBuf,
 }
 
 impl RunInfo {
@@ -59,6 +61,7 @@ impl RunInfo {
             host: host.info(),
             runner: runner.info(),
             payload: PayloadInfo::new(payload_mapping, &host.config_dir_destination_path(&run_id)),
+            output_path: run_id.path(host.output_base_dir_path()),
         }
     }
 }

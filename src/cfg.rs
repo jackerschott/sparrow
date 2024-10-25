@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use clap::{Parser, Subcommand, ValueEnum};
 use camino::Utf8PathBuf as PathBuf;
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::Deserialize;
+use std::collections::HashMap;
 use url::Url;
 
 #[derive(Deserialize)]
@@ -10,15 +10,14 @@ pub struct GlobalConfig {
     pub payload: PayloadMappingConfig,
     pub remote_host: RemoteHostConfig,
     pub local_host: LocalHostConfig,
-    pub run_output_sync_options: RunOutputSyncOptions,
-    pub results: Vec<PathBuf>,
-    pub runner: RunnerConfig,
+    pub runner: Option<RunnerConfig>,
+    pub run_output: RunOutputConfig,
 }
 
 #[derive(Deserialize)]
 pub struct LocalCodeSourceConfig {
     pub path: PathBuf,
-    pub excludes: Vec<String>,
+    pub excludes: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -40,10 +39,18 @@ pub struct ConfigSourceConfig {
     pub entrypoint: PathBuf,
 }
 
+#[derive(Deserialize, Clone)]
+pub struct AuxiliaryMappingConfig {
+    pub path: PathBuf,
+    pub target: PathBuf,
+    pub excludes: Option<Vec<String>>,
+}
+
 #[derive(Deserialize)]
 pub struct PayloadMappingConfig {
     pub code: Vec<CodeMappingConfig>,
     pub config: ConfigSourceConfig,
+    pub auxiliary: Option<Vec<AuxiliaryMappingConfig>>,
 }
 
 #[derive(Deserialize)]
@@ -68,16 +75,22 @@ pub struct LocalHostConfig {
     pub run_output_base_dir: PathBuf,
 }
 
-#[derive(Deserialize)]
-pub struct RunOutputSyncOptions {
-    pub result_excludes: Vec<String>,
-    pub model_excludes: Vec<String>,
+#[derive(Deserialize, Default)]
+pub struct RunnerConfig {
+    pub config: Option<HashMap<String, String>>,
+    pub environment_variable_transfer_requests: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
-pub struct RunnerConfig {
-    pub config: HashMap<String, String>,
-    pub environment_variable_transfer_requests: Vec<String>,
+pub struct RunOutputSyncOptions {
+    pub result_excludes: Vec<String>,
+    pub reproduce_excludes: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct RunOutputConfig {
+    pub sync_options: RunOutputSyncOptions,
+    pub results: Vec<PathBuf>,
 }
 
 #[derive(Parser)]
@@ -99,7 +112,7 @@ pub enum HostType {
 #[derive(Deserialize, ValueEnum, Clone, Debug, PartialEq)]
 pub enum RunOutputSyncContent {
     Results,
-    Models,
+    NecessaryForReproduction,
 }
 
 #[derive(Clone)]

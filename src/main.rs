@@ -64,7 +64,7 @@ fn main() {
                     eprintln!("error while building host: {}", err);
                     std::process::exit(1);
                 });
-            let runner = build_runner(&remainder, &config.runner);
+            let runner = build_runner(&remainder, config.runner);
 
             let payload_mapping = build_payload_mapping(
                 &config.payload,
@@ -112,7 +112,11 @@ fn main() {
                         }
                     );
                 });
-            let run_dir = host.prepare_run_directory(&payload_mapping.code_mappings, run_script);
+            let run_dir = host.prepare_run_directory(
+                &payload_mapping.code_mappings,
+                &payload_mapping.auxiliary_mappings,
+                run_script,
+            );
 
             println!("Execute run...");
             runner.run(&*host, &run_dir, &run_id);
@@ -191,11 +195,11 @@ fn main() {
                 &config.local_host.run_output_base_dir,
                 &match &content {
                     RunOutputSyncContent::Results => host::RunOutputSyncOptions {
-                        excludes: config.run_output_sync_options.result_excludes,
+                        excludes: config.run_output.sync_options.result_excludes,
                         ignore_from_remote_marker: force,
                     },
-                    RunOutputSyncContent::Models => host::RunOutputSyncOptions {
-                        excludes: config.run_output_sync_options.model_excludes,
+                    RunOutputSyncContent::NecessaryForReproduction => host::RunOutputSyncOptions {
+                        excludes: config.run_output.sync_options.reproduce_excludes,
                         ignore_from_remote_marker: force,
                     },
                 },
@@ -205,7 +209,7 @@ fn main() {
                 std::process::exit(1);
             }
 
-            let result_path = match (show_results, config.results.len()) {
+            let result_path = match (show_results, config.run_output.results.len()) {
                 (false, _) => {
                     std::process::exit(0);
                 }
@@ -217,10 +221,10 @@ fn main() {
                     );
                     std::process::exit(1);
                 }
-                (true, 1) => config.results.first().unwrap(),
+                (true, 1) => config.run_output.results.first().unwrap(),
                 (true, _) => {
-                    assert!(config.results.len() > 1);
-                    select_interactively(&config.results)
+                    assert!(config.run_output.results.len() > 1);
+                    select_interactively(&config.run_output.results)
                 }
             };
 
@@ -250,7 +254,7 @@ fn main() {
 
             let run_id = select_interactively(&host.runs()).clone();
 
-            let result_path = match config.results.len() {
+            let result_path = match config.run_output.results.len() {
                 0 => {
                     println!(
                         "Requested results, but no results path specified in config. \
@@ -259,10 +263,10 @@ fn main() {
                     );
                     std::process::exit(1);
                 }
-                1 => config.results.first().unwrap(),
+                1 => config.run_output.results.first().unwrap(),
                 _ => {
-                    assert!(config.results.len() > 1);
-                    select_interactively(&config.results)
+                    assert!(config.run_output.results.len() > 1);
+                    select_interactively(&config.run_output.results)
                 }
             };
 

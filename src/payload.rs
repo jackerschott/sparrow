@@ -19,7 +19,7 @@ pub enum CodeSource {
 pub struct CodeMapping {
     pub id: String,
     pub source: CodeSource,
-    pub target: PathBuf,
+    pub target_path: PathBuf,
 }
 
 #[derive(Clone)]
@@ -29,9 +29,17 @@ pub struct ConfigSource {
 }
 
 #[derive(Clone)]
+pub struct AuxiliaryMapping {
+    pub source_path: PathBuf,
+    pub target_path: PathBuf,
+    pub copy_excludes: Vec<String>,
+}
+
+#[derive(Clone)]
 pub struct PayloadMapping {
     pub code_mappings: Vec<CodeMapping>,
     pub config_source: ConfigSource,
+    pub auxiliary_mappings: Vec<AuxiliaryMapping>,
 }
 
 #[derive(serde::Serialize)]
@@ -93,15 +101,27 @@ pub fn build_payload_mapping(
             } else {
                 CodeSource::Local {
                     path: code_mapping_config.local.path.clone(),
-                    copy_excludes: code_mapping_config.local.excludes.clone(),
+                    copy_excludes: code_mapping_config.local.excludes.clone().unwrap_or(vec![]),
                 }
             };
 
             CodeMapping {
                 id: code_mapping_config.id.clone(),
                 source,
-                target: code_mapping_config.target.clone(),
+                target_path: code_mapping_config.target.clone(),
             }
+        })
+        .collect();
+
+    let auxiliary_mappings = payload_mapping_config
+        .auxiliary
+        .clone()
+        .unwrap_or(vec![])
+        .iter()
+        .map(|mapping_config| AuxiliaryMapping {
+            source_path: mapping_config.path.clone(),
+            target_path: mapping_config.target.clone(),
+            copy_excludes: mapping_config.excludes.clone().unwrap_or(vec![]),
         })
         .collect();
 
@@ -111,5 +131,6 @@ pub fn build_payload_mapping(
             entrypoint_path: payload_mapping_config.config.entrypoint.clone(),
             dir_path: config_dir_path,
         },
+        auxiliary_mappings,
     }
 }

@@ -5,7 +5,7 @@ pub mod slurm_cluster;
 
 use super::utils::Utf8Path;
 use crate::cfg::{HostType, LocalHostConfig, QuickRunConfig, RemoteHostConfig};
-use crate::payload::{CodeMapping, CodeSource, ConfigSource};
+use crate::payload::{AuxiliaryMapping, CodeMapping, CodeSource, ConfigSource};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use local::LocalHost;
 use rsync::{copy_directory, SyncOptions};
@@ -34,12 +34,25 @@ pub trait Host {
     fn prepare_run_directory(
         &self,
         code_mappings: &Vec<CodeMapping>,
+        auxiliary_mappings: &Vec<AuxiliaryMapping>,
         run_script: NamedTempFile,
     ) -> RunDirectory {
         let payload_prep_dir = TempDir::new().expect("failed to create temporary directory");
 
         for code_mapping in code_mappings {
             prepare_code(code_mapping, payload_prep_dir.utf8_path());
+        }
+
+        for auxiliary_mapping in auxiliary_mappings {
+            copy_directory(
+                &auxiliary_mapping.source_path,
+                &payload_prep_dir
+                    .utf8_path()
+                    .join(&auxiliary_mapping.target_path),
+                SyncOptions::default()
+                    .copy_contents()
+                    .exclude(&auxiliary_mapping.copy_excludes),
+            );
         }
 
         let run_script_dest_path = payload_prep_dir.utf8_path().join("run.sh");
@@ -233,7 +246,7 @@ pub fn build_host(
 }
 
 fn prepare_code(code_mapping: &CodeMapping, prep_dir: &Path) {
-    assert!(code_mapping.target.is_relative());
+    assert!(code_mapping.target_path.is_relative());
 
     match &code_mapping.source {
         CodeSource::Local {
@@ -242,7 +255,7 @@ fn prepare_code(code_mapping: &CodeMapping, prep_dir: &Path) {
         } => {
             copy_directory(
                 path.as_path(),
-                &prep_dir.join(code_mapping.target.as_path()),
+                &prep_dir.join(code_mapping.target_path.as_path()),
                 SyncOptions::default()
                     .copy_contents()
                     .exclude(&copy_excludes),
@@ -252,7 +265,7 @@ fn prepare_code(code_mapping: &CodeMapping, prep_dir: &Path) {
             unpack_revision(
                 &url,
                 git_revision.as_str(),
-                &prep_dir.join(code_mapping.target.as_path()),
+                &prep_dir.join(code_mapping.target_path.as_path()),
                 Path::new(&format!(
                     "{}/.ssh/id_ed25519",
                     std::env::var("HOME").unwrap()
