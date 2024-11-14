@@ -90,9 +90,9 @@ impl SlurmClusterHost {
             .status()
             .expect("expected scancel to succeed");
 
-        status
-            .exit_ok()
-            .expect("expected scancel to have a successful exit code");
+        if !status.success() {
+            panic!("expected scancel to have a successful exit code");
+        }
     }
 
     pub fn has_allocated_quick_run_node(&self) -> bool {

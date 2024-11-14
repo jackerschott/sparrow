@@ -1,7 +1,3 @@
-#![feature(let_chains)]
-#![feature(exit_status_error)]
-#![feature(is_none_or)]
-
 mod cfg;
 mod host;
 mod payload;
