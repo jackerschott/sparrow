@@ -93,6 +93,10 @@ fn main() {
             host.prepare_config_directory(
                 &payload_mapping.config_source,
                 &run_id,
+                revisions
+                    .into_iter()
+                    .map(|item| (item.id, item.revision))
+                    .collect(),
                 !no_config_review,
             );
 

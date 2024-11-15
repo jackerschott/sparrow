@@ -4,6 +4,7 @@ pub mod rsync;
 pub mod slurm_cluster;
 
 use std::collections::HashMap;
+use std::io::Write;
 
 use super::utils::Utf8Path;
 use crate::cfg::{LocalHostConfig, QuickRunConfig, RemoteHostConfig};
@@ -73,6 +74,7 @@ pub trait Host {
         &self,
         config_mapping: &ConfigSource,
         run_id: &RunID,
+        code_versions: HashMap<String, String>,
         review: bool,
     ) {
         let review_dir = TempDir::new().expect("expected temporary directory creation to work");
@@ -90,10 +92,29 @@ pub trait Host {
 
         self.create_dir_all(&self.config_dir_destination_path(run_id));
 
+        let mut versions_file =
+            NamedTempFile::new().expect("expecte temporary file creation to work");
+        versions_file
+            .write_all(
+                code_versions
+                    .iter()
+                    .fold(String::new(), |output, (code_source_id, version)| {
+                        output + &format!("{} = {}\n", code_source_id, version)
+                    })
+                    .as_bytes(),
+            )
+            .expect("expected writing to temporary file to work");
+
         self.put(
             review_dir.utf8_path(),
             &self.config_dir_destination_path(run_id),
             SyncOptions::default().copy_contents(),
+        );
+
+        self.put(
+            versions_file.utf8_path(),
+            &self.code_versions_file_destination_path(run_id),
+            SyncOptions::default(),
         )
     }
 
@@ -101,6 +122,11 @@ pub trait Host {
         run_id
             .path(self.output_base_dir_path())
             .join("reproduce_info/config")
+    }
+    fn code_versions_file_destination_path(&self, run_id: &RunID) -> PathBuf {
+        run_id
+            .path(self.output_base_dir_path())
+            .join("reproduce_info/code_versions.txt")
     }
 
     fn put(&self, local_path: &Path, host_path: &Path, options: SyncOptions);
