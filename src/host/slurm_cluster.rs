@@ -315,7 +315,6 @@ impl Host for SlurmClusterHost {
                     *gpu_count,
                     fast_access_container_paths,
                 ),
-                _ => panic!("expected SlurmCluster options"),
             },
         }
     }

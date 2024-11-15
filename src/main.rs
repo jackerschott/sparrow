@@ -9,7 +9,7 @@ use cfg::*;
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
-use host::{build_host, HostType, QuickRunPrepOptions, RunID};
+use host::{build_host, QuickRunPrepOptions, RunID};
 use payload::build_payload_mapping;
 use runner::{build_runner, RunInfo};
 use utils::AsUtf8Path;
@@ -136,7 +136,6 @@ fn main() {
             let host = build_host(&host_id, &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
             host.prepare_quick_run(&QuickRunPrepOptions::build(
-                &HostType::Remote,
                 time.as_deref(),
                 cpu_count,
                 gpu_count,

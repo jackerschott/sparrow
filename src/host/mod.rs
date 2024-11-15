@@ -3,11 +3,6 @@ pub mod local;
 pub mod rsync;
 pub mod slurm_cluster;
 
-pub enum HostType {
-    Local,
-    Remote,
-}
-
 use std::collections::HashMap;
 
 use super::utils::Utf8Path;
@@ -153,27 +148,20 @@ pub enum QuickRunPrepOptions {
         gpu_count: u16,
         fast_access_container_paths: Vec<PathBuf>,
     },
-    Local {},
 }
 
 impl QuickRunPrepOptions {
     pub fn build(
-        host_type: &HostType,
         time: Option<&str>,
         cpu_count: Option<u16>,
         gpu_count: Option<u16>,
         quick_run_config: &QuickRunConfig,
     ) -> Self {
-        match host_type {
-            HostType::Local => QuickRunPrepOptions::Local {},
-            HostType::Remote => QuickRunPrepOptions::SlurmCluster {
-                time: time.unwrap_or(&quick_run_config.time).to_owned(),
-                cpu_count: cpu_count.unwrap_or(quick_run_config.cpu_count),
-                gpu_count: gpu_count.unwrap_or(quick_run_config.gpu_count),
-                fast_access_container_paths: quick_run_config
-                    .fast_access_container_requests
-                    .clone(),
-            },
+        QuickRunPrepOptions::SlurmCluster {
+            time: time.unwrap_or(&quick_run_config.time).to_owned(),
+            cpu_count: cpu_count.unwrap_or(quick_run_config.cpu_count),
+            gpu_count: gpu_count.unwrap_or(quick_run_config.gpu_count),
+            fast_access_container_paths: quick_run_config.fast_access_container_requests.clone(),
         }
     }
 }
