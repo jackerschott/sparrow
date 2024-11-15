@@ -123,9 +123,11 @@ impl std::str::FromStr for RevisionItem {
             id: parts.next().ok_or("missing id")?.to_string(),
             revision: parts.next().ok_or("missing revision")?.to_string(),
         };
-        parts.next().ok_or("unexpected trailing data")?;
 
-        return Ok(item);
+        match parts.next() {
+            Some(_) => Err(String::from("unexpected trailing data")),
+            None => Ok(item),
+        }
     }
 }
 
