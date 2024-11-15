@@ -9,7 +9,7 @@ use cfg::*;
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
-use host::{build_host, QuickRunPrepOptions, RunID};
+use host::{build_host, HostType, QuickRunPrepOptions, RunID};
 use payload::build_payload_mapping;
 use runner::{build_runner, RunInfo};
 use utils::AsUtf8Path;
@@ -55,11 +55,16 @@ fn main() {
             let run_id = RunID::new(&run_name, &run_group);
 
             println!("Connect to host...");
-            let host = build_host(host, &config.local_host, &config.remote_host, enforce_quick)
-                .unwrap_or_else(|err| {
-                    eprintln!("error while building host: {}", err);
-                    std::process::exit(1);
-                });
+            let host = build_host(
+                &host,
+                &config.local_host,
+                &config.remote_hosts,
+                enforce_quick,
+            )
+            .unwrap_or_else(|err| {
+                eprintln!("error while building host: {}", err);
+                std::process::exit(1);
+            });
             let runner = build_runner(&remainder, config.runner);
 
             let payload_mapping = build_payload_mapping(
@@ -118,38 +123,39 @@ fn main() {
             runner.run(&*host, &run_dir, &run_id);
         }
         Some(RunnerCommandConfig::RemotePrepareQuickRun {
+            host: host_id,
             time,
             gpu_count,
             cpu_count,
         }) => {
-            let host = build_host(
-                HostType::Remote,
-                &config.local_host,
-                &config.remote_host,
-                false,
-            )
-            .expect("expected host building to always succeed");
+            if host_id == "local" {
+                eprintln!("Cannot prepare quick run on local host");
+                std::process::exit(1);
+            }
+
+            let host = build_host(&host_id, &config.local_host, &config.remote_hosts, false)
+                .expect("expected host building to always succeed");
             host.prepare_quick_run(&QuickRunPrepOptions::build(
                 &HostType::Remote,
                 time.as_deref(),
                 cpu_count,
                 gpu_count,
-                &config.remote_host.quick_run,
+                &config.remote_hosts[&host_id].quick_run,
             ));
             host.wait_for_preparation();
         }
-        Some(RunnerCommandConfig::RemoteClearQuickRun {}) => {
-            let host = build_host(
-                HostType::Remote,
-                &config.local_host,
-                &config.remote_host,
-                false,
-            )
-            .expect("expected host building to always succeed");
+        Some(RunnerCommandConfig::RemoteClearQuickRun { host }) => {
+            if host == "local" {
+                eprintln!("Cannot prepare quick run on local host");
+                std::process::exit(1);
+            }
+
+            let host = build_host(&host, &config.local_host, &config.remote_hosts, false)
+                .expect("expected host building to always succeed");
             host.clear_preparation();
         }
         Some(RunnerCommandConfig::ListRuns { host, running }) => {
-            let host = build_host(host, &config.local_host, &config.remote_host, false)
+            let host = build_host(&host, &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
 
             let run_ids = if running {
@@ -162,28 +168,19 @@ fn main() {
                 println!("{}", run_id);
             }
         }
-        Some(RunnerCommandConfig::RunAttach { quick }) => {
-            let host = build_host(
-                HostType::Remote,
-                &config.local_host,
-                &config.remote_host,
-                quick,
-            )
-            .expect("expected host building to always succeed");
+        Some(RunnerCommandConfig::RunAttach { host, quick }) => {
+            let host = build_host(&host, &config.local_host, &config.remote_hosts, quick)
+                .expect("expected host building to always succeed");
             host.attach(select_interactively(&host.running_runs()));
         }
         Some(RunnerCommandConfig::RunOutputSync {
+            host,
             content,
             show_results,
             force,
         }) => {
-            let host = build_host(
-                HostType::Remote,
-                &config.local_host,
-                &config.remote_host,
-                false,
-            )
-            .expect("expected host building to always succeed");
+            let host = build_host(&host, &config.local_host, &config.remote_hosts, false)
+                .expect("expected host building to always succeed");
 
             let run_id = select_interactively(&host.runs()).clone();
             let sync_result = host.sync(
@@ -231,7 +228,7 @@ fn main() {
             quick_run,
             follow,
         }) => {
-            let host = build_host(host, &config.local_host, &config.remote_host, quick_run)
+            let host = build_host(&host, &config.local_host, &config.remote_hosts, quick_run)
                 .expect("expected host building to always succeed");
 
             let run_id = select_interactively(&host.running_runs()).clone();
@@ -240,13 +237,8 @@ fn main() {
             host.tail_log(&run_id, &log_file_path, follow);
         }
         Some(RunnerCommandConfig::ShowResults {}) => {
-            let host = build_host(
-                HostType::Local,
-                &config.local_host,
-                &config.remote_host,
-                false,
-            )
-            .expect("expected host building to always succeed");
+            let host = build_host("local", &config.local_host, &config.remote_hosts, false)
+                .expect("expected host building to always succeed");
 
             let run_id = select_interactively(&host.runs()).clone();
 

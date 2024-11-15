@@ -8,7 +8,7 @@ use url::Url;
 pub struct GlobalConfig {
     pub run_group: String,
     pub payload: PayloadMappingConfig,
-    pub remote_host: RemoteHostConfig,
+    pub remote_hosts: HashMap<String, RemoteHostConfig>,
     pub local_host: LocalHostConfig,
     pub runner: Option<RunnerConfig>,
     pub run_output: RunOutputConfig,
@@ -63,7 +63,6 @@ pub struct QuickRunConfig {
 
 #[derive(Deserialize)]
 pub struct RemoteHostConfig {
-    pub id: String,
     pub hostname: String,
     pub run_output_base_dir: PathBuf,
     pub temporary_dir: PathBuf,
@@ -101,12 +100,6 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Option<RunnerCommandConfig>,
-}
-
-#[derive(Deserialize, ValueEnum, Clone, Debug, PartialEq)]
-pub enum HostType {
-    Local,
-    Remote,
 }
 
 #[derive(Deserialize, ValueEnum, Clone, Debug, PartialEq)]
@@ -156,8 +149,14 @@ pub enum RunnerCommandConfig {
         )]
         revisions: Vec<RevisionItem>,
 
-        #[arg(short = 'p', long, value_enum, default_value = "local")]
-        host: HostType,
+        #[arg(
+            short = 'p',
+            long,
+            default_value = "local",
+            help = "host where to run, can be 'local' or the id of any of the\n\
+                remotes defined in the configuration"
+        )]
+        host: String,
 
         #[arg(short = 'q', long)]
         enforce_quick: bool,
@@ -172,6 +171,14 @@ pub enum RunnerCommandConfig {
         only_print_run_script: bool,
     },
     RemotePrepareQuickRun {
+        #[arg(
+            short = 'p',
+            long,
+            help = "host where to run, can be 'local' or the id of any of the\n\
+                remotes defined in the configuration"
+        )]
+        host: String,
+
         #[arg(short = 't', long)]
         time: Option<String>,
 
@@ -181,19 +188,49 @@ pub enum RunnerCommandConfig {
         #[arg(short = 'g', long)]
         gpu_count: Option<u16>,
     },
-    RemoteClearQuickRun {},
+    RemoteClearQuickRun {
+        #[arg(
+            short = 'p',
+            long,
+            help = "host where to run, can be 'local' or the id of any of the\n\
+                remotes defined in the configuration"
+        )]
+        host: String,
+    },
     ListRuns {
-        #[arg(short = 'p', long, value_enum, default_value = "remote")]
-        host: HostType,
+        #[arg(
+            short = 'p',
+            long,
+            default_value = "local",
+            help = "host from which to list runs, can be the id of any of the\n\
+                remotes defined in the configuration"
+        )]
+        host: String,
 
         #[arg(short = 'r', long)]
         running: bool,
     },
     RunAttach {
+        #[arg(
+            short = 'p',
+            long,
+            help = "host to attach to, can be the id of any of the remotes defined\n\
+                in the configuration"
+        )]
+        host: String,
+
         #[arg(short = 'q', long)]
         quick: bool,
     },
     RunOutputSync {
+        #[arg(
+            short = 'p',
+            long,
+            help = "host from which to sync from, can be the id of any of the remotes\n\
+                defined in the configuration"
+        )]
+        host: String,
+
         #[arg(short = 'c', long, value_enum, default_value = "results")]
         content: RunOutputSyncContent,
 
@@ -204,8 +241,13 @@ pub enum RunnerCommandConfig {
         force: bool,
     },
     RunLog {
-        #[arg(short = 'p', long, value_enum, default_value = "remote")]
-        host: HostType,
+        #[arg(
+            short = 'p',
+            long,
+            help = "host from which to show log output, can be the id of any of the\n\
+                remotes defined in the configuration"
+        )]
+        host: String,
 
         #[arg(short = 'q', long)]
         quick_run: bool,

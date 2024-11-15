@@ -3,8 +3,15 @@ pub mod local;
 pub mod rsync;
 pub mod slurm_cluster;
 
+pub enum HostType {
+    Local,
+    Remote,
+}
+
+use std::collections::HashMap;
+
 use super::utils::Utf8Path;
-use crate::cfg::{HostType, LocalHostConfig, QuickRunConfig, RemoteHostConfig};
+use crate::cfg::{LocalHostConfig, QuickRunConfig, RemoteHostConfig};
 use crate::payload::{AuxiliaryMapping, CodeMapping, CodeSource, ConfigSource};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use local::LocalHost;
@@ -214,34 +221,35 @@ pub struct HostInfo {
 }
 
 pub fn build_host(
-    host_type: HostType,
+    host_id: &str,
     local_config: &LocalHostConfig,
-    remote_config: &RemoteHostConfig,
+    remote_configs: &HashMap<String, RemoteHostConfig>,
     configure_for_quick_run: bool,
 ) -> Result<Box<dyn Host>, String> {
-    if host_type == HostType::Local && configure_for_quick_run {
+    if host_id == "local" && configure_for_quick_run {
         return Err("Cannot use --enforce-quick with the local host".to_owned());
     }
 
-    match host_type {
-        HostType::Local => Ok(Box::new(LocalHost::new(
+    if host_id == "local" {
+        Ok(Box::new(LocalHost::new(
             local_config.run_output_base_dir.as_path(),
-        ))),
-        HostType::Remote => {
-            let quick_run_config = if !configure_for_quick_run {
-                QuickRun::Disabled
-            } else {
-                QuickRun::Enabled
-            };
+        )))
+    } else if remote_configs.contains_key(host_id) {
+        let quick_run_config = if !configure_for_quick_run {
+            QuickRun::Disabled
+        } else {
+            QuickRun::Enabled
+        };
 
-            Ok(Box::new(SlurmClusterHost::new(
-                remote_config.id.as_str(),
-                remote_config.hostname.as_str(),
-                remote_config.run_output_base_dir.as_path(),
-                remote_config.temporary_dir.as_path(),
-                quick_run_config,
-            )))
-        }
+        Ok(Box::new(SlurmClusterHost::new(
+            &host_id,
+            remote_configs[host_id].hostname.as_str(),
+            remote_configs[host_id].run_output_base_dir.as_path(),
+            remote_configs[host_id].temporary_dir.as_path(),
+            quick_run_config,
+        )))
+    } else {
+        Err(format!("Unknown host id: {}", host_id))
     }
 }
 
