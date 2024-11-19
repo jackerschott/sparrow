@@ -1,0 +1,11 @@
+image: rust:latest
+
+pages:
+  script:
+    - cargo doc --no-deps
+    - mv target/doc/sparrow public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
