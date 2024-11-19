@@ -1,3 +1,116 @@
+//! A simple cli experiment submission tool compatible with slurm clusters
+//! which can
+//!
+//! * test code and configuration locally
+//! * upload experiment code and configuration from a development machine
+//! * monitor the status of the experiment while it is running
+//! * organize and managing experiment outputs
+//!
+//! In particular, sparrow can
+//!
+//! * enable local testing of code and configuration before running code on more involved hardware,
+//!   while making the switch as easy as changing a command line flag
+//! * allow starting many experiments in parallel without any unnecessary overhead or worries about
+//!   code/config overlaps
+//! * allow for easy config changes and reviews during submission, making it harder to accidentally
+//!   use the wrong config for a 10 hour neural-network training
+//! * track and pin the exact git commmit and configuration used for the training, to allow for full
+//!   reproduciblity, or just use the current state of your code when you need convenience
+//!
+//! # Getting Started
+//!
+//! Build and install sparrow by cloning the [repository](https://gitlab.cern.ch/jackersc/sparrow)
+//! and running
+//!
+//! ```shell
+//! cargo install --path .
+//! ```
+//!
+//! Note that you might need to add ~/.cargo/bin to your PATH in bashrc/zshrc/config.fish, before
+//! being able to execute `sparrow`.
+//!
+//! Next we need to create a `run.yaml` file that contains everything sparrow needs to now about
+//! your setup, i.e. mostly your code and the cluster you want to run on.
+//! Consult the documentation of the [`cfg`] module for details on how to write this file.
+//!
+//! Now we only need to define the command we want sparrow to run our code with.
+//! This is done by writing a run.sh.j2 file, which is a bash script template that uses the [jinja
+//! specification](https://jinja.palletsprojects.com/en/stable/).
+//! A common example using snakemake would be
+//!
+//! ```shell
+//! {%- if not host.is_local -%}
+//! module load GCCcore/13.2.0 Python/3.11.5
+//!
+//! {% endif -%}
+//! snakemake \
+//!     --snakefile=workflow/biastest.smk \
+//!     --workflow-profile=workflow/profiles/{{ host.id + "-test" if host.is_configured_for_quick_run and not host.is_local else host.id }} \
+//!     --keep-going \
+//!     {{ runner.cmdline }} \
+//!     --config \
+//!         experiment_name={{ run_id.name }} \
+//!         experiment_group={{ run_id.group }} \
+//!         experiment_base_dir={{ host.run_output_base_dir_path }} \
+//!         code_revision={{ payload.code_revisions.sourcerer }} \
+//!         host={{ host.id }} \
+//!         devstage={{ 'test' if host.is_local or host.is_configured_for_quick_run else 'experiment' }} \
+//!         config_dir={{ payload.config_dir }} \
+//!         user=jona \
+//!         fast_dev_run=False
+//! ```
+//!
+//! Everything inside of `{{` and `}}` is a jinja template expression, which will be rendered and
+//! populated by sparrow to create the final run script.
+//! These expression allow for some logic with a python-like syntax, like if-statements and loops.
+//! The variables that jinja uses are defined and documented by sparrow in the [`RunInfo`] struct.
+//!
+//! To launch an experiment after both `run.yaml` and `run.sh.j2` are created, we can run
+//!
+//! ```shell
+//! sparrow run --run-name my_experiment
+//! ```
+//!
+//! This will simply launch the command we defined in `run.sh.j2` on our local machine in a
+//! temporary run directory and point the command to the output directory we defined in `run.yaml`
+//! under `<run-group>/my_experiment` (where the run group is also defined in `run.yaml`).
+//!
+//! If we want to launch the experiment on a remote host instead, we simply specify the id of the
+//! remote host, as specified in `run.yaml`
+//!
+//! ```shell
+//! sparrow run --host <host-id> --run-name my_experiment
+//! ```
+//!
+//! This will copy all code and configuration to the remote machine into a dedicated run directory
+//! and execute the given command in a tmux session from which one can de- and reattach.
+//!
+//! It is often useful to run the experiment on a remote host, but on a pre-allocated node, instead
+//! of the login node.
+//!
+//! In this case we can simply use
+//!
+//! ```shell
+//! sparrow remote-prepare-quick-run --host <host-id>
+//! ```
+//!
+//! And subsequently execute the run command with the `--enforce-quick` flag and the run will
+//! automatically use the pre-allocated node.
+//! Note that for this to work, sparrow assumes that the pre-allocated node is accessible via ssh
+//! under `<hostname>-quick`.
+//! This can be done by adding the following to your ssh configuration
+//!
+//! ```ssh
+//! Host <hostname>-quick
+//!     User ackersch
+//!     ProxyCommand ssh -q <hostname> 'nc $(squeue --noheader --format %%N --user <username> --name quick-run-towel) 22'
+//! ```
+//!
+//! Here `quick-run-towel` is the name `sparrow` uses to identify the job that allocates the node.
+//!
+//! [`cfg`]: crate::cfg
+//! [`RunInfo`]: crate::runner::RunInfo
+
 mod cfg;
 mod host;
 mod payload;

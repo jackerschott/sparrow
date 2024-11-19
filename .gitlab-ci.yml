@@ -3,7 +3,8 @@ image: rust:latest
 pages:
   script:
     - cargo doc --no-deps
-    - mv target/doc/sparrow public
+    - mv target/doc public
+    - echo '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; URL=sparrow/index.html"></head><body><p>If you are not redirected, <a href="sparrow/index.html">click here</a>.</p></body></html>' > public/index.html
   artifacts:
     paths:
       - public
