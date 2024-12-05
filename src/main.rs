@@ -131,7 +131,7 @@ fn main() {
     let cli = Cli::parse();
 
     if cli.print_completion {
-        generate(Fish, &mut Cli::command(), "runner", &mut std::io::stdout());
+        generate(Fish, &mut Cli::command(), "sparrow", &mut std::io::stdout());
         return;
     }
 
