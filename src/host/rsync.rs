@@ -100,7 +100,7 @@ fn ensure_trimmed_trailing_slash(path: &Path) -> &Path {
 pub fn rsync<'a>(payload: SyncPayload<'a>, options: SyncOptions) -> std::io::Result<()> {
     let mut cmd = Command::new("rsync");
 
-    cmd.args(["--recursive", "--checksum", "--links"]);
+    cmd.args(["--archive", "--checksum"]);
 
     if options.quiet {
         cmd.arg("--quiet");
