@@ -10,6 +10,7 @@ use super::utils::Utf8Path;
 use crate::cfg::{LocalHostConfig, QuickRunConfig, RemoteHostConfig};
 use crate::payload::{AuxiliaryMapping, CodeMapping, CodeSource, ConfigSource};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
+use git2::Repository;
 use local::LocalHost;
 use rsync::{copy_directory, SyncOptions};
 use slurm_cluster::{QuickRun, SlurmClusterHost};
@@ -328,21 +329,24 @@ fn unpack_revision(url: &Url, git_revision: &str, destination_path: &Path, ssh_k
         return fetch_options;
     };
 
-    let repo = git2::build::RepoBuilder::new()
-        .fetch_options(get_fetch_options())
-        .clone(url.as_str(), destination_path.as_std_path())
-        .expect(&format!("cloning {url} to {destination_path} should work"));
-
-    let revision = repo.revparse(git_revision).expect(&format!(
-        "revision {git_revision} should be valid\nDid you push it?"
+    let repo =
+        Repository::init(destination_path).expect("expected repository initialization to work");
+    let mut origin = repo.remote("origin", url.as_str()).expect(&format!(
+        "expected remote creation of origin under `{url}' to work"
     ));
-    let treeish = revision.from().expect(&format!(
-        "expected {git_revision} to be a single revision \
-        and single revisions to have a from"
-    ));
+    origin
+        .fetch(&[git_revision], Some(&mut get_fetch_options()), None)
+        .expect(&format!(
+            "expected fetch of {git_revision} from origin under `{url}' to work"
+        ));
 
-    repo.checkout_tree(&treeish, None)
-        .expect(&format!("expected checkout to {git_revision} to work"));
+    let (object, _) = repo
+        .revparse_ext(git_revision)
+        .expect(&format!("expected parsing of `{git_revision}' to work"));
+    repo.checkout_tree(&object, None)
+        .expect(&format!("expected checkout of `{git_revision}' to work"));
+    repo.set_head_detached(object.id())
+        .expect(&format!("expected checkout of `{git_revision}' to work"));
 
     let mut submodules = repo
         .submodules()
