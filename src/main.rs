@@ -106,7 +106,11 @@
 //!     ProxyCommand ssh -q <hostname> 'nc $(squeue --noheader --format %%N --user <username> --name quick-run-towel) 22'
 //! ```
 //!
-//! Here `quick-run-towel` is the name `sparrow` uses to identify the job that allocates the node.
+//! where `quick-run-towel` is the name `sparrow` uses to identify the job that allocates the node.
+//! In addition, you also need to add your public key to `~/.ssh/authorized_keys` on the login node
+//! of the cluster(s) you want to use. While the login node is configured to accept your public key
+//! automatically, the compute nodes do not. So we add the key manually in our home directory which
+//! is shared with the compute nodes automatically via the network file system.
 //!
 //! [`cfg`]: crate::cfg
 //! [`RunInfo`]: crate::runner::RunInfo
