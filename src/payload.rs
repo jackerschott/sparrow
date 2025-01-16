@@ -15,6 +15,15 @@ pub enum CodeSource {
     },
 }
 
+impl CodeSource {
+    pub fn git_revision(&self) -> Option<&String> {
+        match self {
+            CodeSource::Remote { git_revision, .. } => Some(git_revision),
+            CodeSource::Local { .. } => None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct CodeMapping {
     pub id: String,
@@ -69,10 +78,33 @@ impl PayloadInfo {
 pub fn build_payload_mapping(
     payload_mapping_config: &PayloadMappingConfig,
     config_dir_override_path: Option<&Path>,
-    revisions: &HashMap<String, String>,
+    ignore_revisions: &Vec<String>,
     config_base_dir: &Path,
 ) -> PayloadMapping {
     assert!(payload_mapping_config.config.entrypoint.is_relative());
+
+    ignore_revisions.iter().for_each(|ignore_id| {
+        if !payload_mapping_config
+            .code
+            .iter()
+            .any(|x| x.id == *ignore_id)
+        {
+            eprintln!(
+                "cannot ignore revision of id `{}', not found in code mappings",
+                ignore_id
+            );
+            std::process::exit(1);
+        }
+
+        if ignore_revisions
+            .iter()
+            .find(|&id| *id == *ignore_id)
+            .is_some()
+        {
+            eprintln!("found duplicate id `{ignore_id}' in revision ignore request");
+            std::process::exit(1);
+        }
+    });
 
     let config_dir_override_path = config_dir_override_path.map(|x| {
         x.is_relative()
@@ -87,34 +119,25 @@ pub fn build_payload_mapping(
         .unwrap_or(payload_mapping_config.config.dir.clone());
     let config_dir_path = config_dir_override_path.unwrap_or(config_dir_from_config);
 
-    if payload_mapping_config
-        .code
-        .iter()
-        .any(|code_mapping_config| revisions.contains_key(&code_mapping_config.id))
-        && !payload_mapping_config
-            .code
-            .iter()
-            .all(|code_mapping_config| revisions.contains_key(&code_mapping_config.id))
-    {
-        eprintln!("refusing to run; specified some code revisions but not all");
-        std::process::exit(1);
-    }
-
     let code_mappings: Vec<CodeMapping> = payload_mapping_config
         .code
         .iter()
         .map(|code_mapping_config| {
             assert!(code_mapping_config.target.is_relative());
 
-            let source = if let Some(revision) = revisions.get(&code_mapping_config.id) {
-                CodeSource::Remote {
-                    url: code_mapping_config.remote.url.clone(),
-                    git_revision: revision.to_owned(),
-                }
-            } else {
+            let source = if ignore_revisions
+                .iter()
+                .find(|id| *id == &code_mapping_config.id)
+                .is_some()
+            {
                 CodeSource::Local {
                     path: code_mapping_config.local.path.clone(),
                     copy_excludes: code_mapping_config.local.excludes.clone().unwrap_or(vec![]),
+                }
+            } else {
+                CodeSource::Remote {
+                    url: code_mapping_config.remote.url.clone(),
+                    git_revision: code_mapping_config.remote.revision.clone(),
                 }
             };
 

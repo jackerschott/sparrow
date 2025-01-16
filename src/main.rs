@@ -161,20 +161,13 @@ fn main() {
             run_name,
             run_group,
             config_dir,
-            revisions,
-            no_revisions,
+            ignore_revisions,
             host,
             enforce_quick,
             no_config_review,
             remainder,
             only_print_run_script,
         }) => {
-            if no_revisions {
-                assert!(revisions.is_empty())
-            } else {
-                assert!(!revisions.is_empty())
-            }
-
             let run_group = run_group.unwrap_or(config.run_group);
             let run_id = RunID::new(&run_name, &run_group);
 
@@ -194,10 +187,7 @@ fn main() {
             let payload_mapping = build_payload_mapping(
                 &config.payload,
                 config_dir.as_deref(),
-                &revisions
-                    .iter()
-                    .map(|item| (item.id.clone(), item.revision.clone()))
-                    .collect(),
+                &ignore_revisions,
                 config_path
                     .parent()
                     .expect("expected config path to have a parent"),
@@ -217,9 +207,15 @@ fn main() {
             host.prepare_config_directory(
                 &payload_mapping.config_source,
                 &run_id,
-                revisions
-                    .into_iter()
-                    .map(|item| (item.id, item.revision))
+                payload_mapping
+                    .code_mappings
+                    .iter()
+                    .filter_map(|code_mapping| {
+                        code_mapping
+                            .source
+                            .git_revision()
+                            .map(|revision| (code_mapping.id.clone(), revision.clone()))
+                    })
                     .collect(),
                 !no_config_review,
             );

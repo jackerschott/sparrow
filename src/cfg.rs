@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf as PathBuf;
-use clap::{ArgGroup, Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::Deserialize;
 use std::collections::HashMap;
 use url::Url;
@@ -23,6 +23,7 @@ pub struct LocalCodeSourceConfig {
 #[derive(Deserialize)]
 pub struct RemoteCodeSourceConfig {
     pub url: Url,
+    pub revision: String,
 }
 
 #[derive(Deserialize)]
@@ -108,36 +109,23 @@ pub enum RunOutputSyncContent {
     NecessaryForReproduction,
 }
 
-#[derive(Clone)]
-pub struct RevisionItem {
-    pub id: String,
-    pub revision: String,
-}
-
-impl std::str::FromStr for RevisionItem {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut parts = s.split('=');
-        let item = RevisionItem {
-            id: parts.next().ok_or("missing id")?.to_string(),
-            revision: parts.next().ok_or("missing revision")?.to_string(),
-        };
-
-        match parts.next() {
-            Some(_) => Err(String::from("unexpected trailing data")),
-            None => Ok(item),
-        }
+fn parse_comma_separated(val: &str) -> Result<Vec<String>, String> {
+    if val.is_empty() {
+        return Err("found empty string".to_string());
     }
+
+    val.split(',')
+        .map(|item| {
+            let item = item.trim().to_string();
+            (!item.is_empty())
+                .then_some(item)
+                .ok_or("found empty item".to_string())
+        })
+        .collect()
 }
 
 #[derive(Subcommand)]
 pub enum RunnerCommandConfig {
-    #[command(group(
-        ArgGroup::new("bla")
-            .args(&["revisions", "no_revisions"])
-            .required(true)
-    ))]
     Run {
         #[arg(short = 'n', long)]
         run_name: String,
@@ -151,13 +139,11 @@ pub enum RunnerCommandConfig {
         #[arg(
             short = 'v',
             long,
-            help = "can be used multiple times to specify the revision of each\n\
-                code source to use in the format <code_source_id>=<revision>"
+            value_parser(parse_comma_separated),
+            help = "a comma seperated list of source ids from which we want to ignore the \
+                revision and use the current version in the local directory"
         )]
-        revisions: Vec<RevisionItem>,
-
-        #[arg(long)]
-        no_revisions: bool,
+        ignore_revisions: Vec<String>,
 
         #[arg(
             short = 'p',
