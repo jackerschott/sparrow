@@ -61,14 +61,9 @@ impl Runner for DefaultRunner {
             .environment_variable_transfer_requests
             .iter()
             .map(|variable_name| {
-                let variable_value = std::env::var(variable_name).unwrap_or_else(|err| {
-                    eprintln!(
-                        "refusing to run; \
-                        expected {variable_name} to be retreivable from \
-                        the local environment because of a transfer request: {err}"
-                    );
-                    std::process::exit(1);
-                });
+                let variable_value = std::env::var(variable_name)
+                    .expect("expected variable to be retreivable from the environment \
+                        due to a previous check when building the runner");
                 (variable_name, variable_value)
             })
             .collect::<Vec<_>>();
