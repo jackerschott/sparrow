@@ -162,12 +162,19 @@ fn main() {
             run_group,
             config_dir,
             revisions,
+            no_revisions,
             host,
             enforce_quick,
             no_config_review,
             remainder,
             only_print_run_script,
         }) => {
+            if no_revisions {
+                assert!(revisions.is_empty())
+            } else {
+                assert!(!revisions.is_empty())
+            }
+
             let run_group = run_group.unwrap_or(config.run_group);
             let run_id = RunID::new(&run_name, &run_group);
 

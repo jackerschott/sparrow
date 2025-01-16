@@ -34,21 +34,19 @@ pub fn build_runner(cmdline: &Vec<String>, config: Option<RunnerConfig>) -> Box<
     let config = config.unwrap_or_default();
 
     let variable_transfer_requests = config
-            .environment_variable_transfer_requests
-            .unwrap_or(Vec::new());
+        .environment_variable_transfer_requests
+        .unwrap_or(Vec::new());
 
-    variable_transfer_requests
-        .iter()
-        .for_each(|variable_name| {
-            if let Err(err) = std::env::var(variable_name) {
-                eprintln!(
-                    "refusing to run; \
+    variable_transfer_requests.iter().for_each(|variable_name| {
+        if let Err(err) = std::env::var(variable_name) {
+            eprintln!(
+                "refusing to run; \
                     expected {variable_name} to be retreivable from \
                     the local environment because of a transfer request: {err}"
-                );
-                std::process::exit(1);
-            }
-        });
+            );
+            std::process::exit(1);
+        }
+    });
 
     Box::new(DefaultRunner::new(
         cmdline,

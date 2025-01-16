@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf as PathBuf;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{ArgGroup, Parser, Subcommand, ValueEnum};
 use serde::Deserialize;
 use std::collections::HashMap;
 use url::Url;
@@ -133,6 +133,11 @@ impl std::str::FromStr for RevisionItem {
 
 #[derive(Subcommand)]
 pub enum RunnerCommandConfig {
+    #[command(group(
+        ArgGroup::new("bla")
+            .args(&["revisions", "no_revisions"])
+            .required(true)
+    ))]
     Run {
         #[arg(short = 'n', long)]
         run_name: String,
@@ -150,6 +155,9 @@ pub enum RunnerCommandConfig {
                 code source to use in the format <code_source_id>=<revision>"
         )]
         revisions: Vec<RevisionItem>,
+
+        #[arg(long)]
+        no_revisions: bool,
 
         #[arg(
             short = 'p',

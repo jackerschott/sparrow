@@ -87,6 +87,19 @@ pub fn build_payload_mapping(
         .unwrap_or(payload_mapping_config.config.dir.clone());
     let config_dir_path = config_dir_override_path.unwrap_or(config_dir_from_config);
 
+    if payload_mapping_config
+        .code
+        .iter()
+        .any(|code_mapping_config| revisions.contains_key(&code_mapping_config.id))
+        && !payload_mapping_config
+            .code
+            .iter()
+            .all(|code_mapping_config| revisions.contains_key(&code_mapping_config.id))
+    {
+        eprintln!("refusing to run; specified some code revisions but not all");
+        std::process::exit(1);
+    }
+
     let code_mappings: Vec<CodeMapping> = payload_mapping_config
         .code
         .iter()
