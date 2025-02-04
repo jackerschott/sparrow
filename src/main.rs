@@ -161,6 +161,7 @@ fn main() {
             run_name,
             run_group,
             config_dir,
+            use_previous_config,
             ignore_revisions,
             host,
             enforce_quick,
@@ -182,8 +183,12 @@ fn main() {
                 eprintln!("error while building host: {}", err);
                 std::process::exit(1);
             });
+
             let runner = build_runner(&remainder, config.runner);
 
+            let config_dir = use_previous_config
+                .then_some(host.config_dir_destination_path(&RunID::new(run_name, run_group)))
+                .or(config_dir);
             let payload_mapping = build_payload_mapping(
                 &config.payload,
                 config_dir.as_deref(),

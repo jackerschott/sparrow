@@ -108,22 +108,6 @@ pub enum RunOutputSyncContent {
     Results,
     NecessaryForReproduction,
 }
-
-fn parse_comma_separated(val: &str) -> Result<Vec<String>, String> {
-    if val.is_empty() {
-        return Err("found empty string".to_string());
-    }
-
-    val.split(',')
-        .map(|item| {
-            let item = item.trim().to_string();
-            (!item.is_empty())
-                .then_some(item)
-                .ok_or("found empty item".to_string())
-        })
-        .collect()
-}
-
 #[derive(Subcommand)]
 pub enum RunnerCommandConfig {
     Run {
@@ -133,13 +117,16 @@ pub enum RunnerCommandConfig {
         #[arg(short = 'g', long)]
         run_group: Option<String>,
 
-        #[arg(short = 'c', long)]
+        #[arg(short = 'c', long, group = "config_source")]
         config_dir: Option<PathBuf>,
+
+        #[arg(long, group = "config_source")]
+        use_previous_config: bool,
 
         #[arg(
             short = 'v',
             long,
-            value_parser(parse_comma_separated),
+            value_delimiter = ',',
             help = "a comma seperated list of source ids from which we want to ignore the \
                 revision and use the current version in the local directory"
         )]

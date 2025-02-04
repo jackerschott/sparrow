@@ -98,8 +98,9 @@ pub fn build_payload_mapping(
 
         if ignore_revisions
             .iter()
-            .find(|&id| *id == *ignore_id)
-            .is_some()
+            .filter(|&id| *id == *ignore_id)
+            .count()
+            > 1
         {
             eprintln!("found duplicate id `{ignore_id}' in revision ignore request");
             std::process::exit(1);
