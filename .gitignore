@@ -3,4 +3,10 @@
 /run.sh.j2
 /repo/
 /run.yaml
-/Cargo.lock
+/todo.txt
+/portability_limits.txt
+/*devenv*
+/devenv.lock
+/.direnv
+/.envrc
+/.pre-commit-config.yaml
