@@ -313,7 +313,7 @@ fn review_config(dir_path: &Path, entrypoint_path: &Path) {
         cmd.arg(entry.path());
     }
 
-    cmd.status().expect("expected {cmd} to run successfully");
+    cmd.status().expect(&format!("expected {cmd:?} to run successfully"));
 }
 
 fn unpack_revision(url: &Url, git_revision: &str, destination_path: &Path, ssh_key_path: &Path) {
