@@ -128,10 +128,7 @@ impl Host for LocalHost {
 }
 
 pub fn show_result(run_id: &RunID, base_path: &Path, path: &Path) {
-    let opener =
-        std::env::var("OPENER").expect("expected the OPENER environment variable to be set");
-    std::process::Command::new(opener)
-        .arg(run_id.path(base_path).join(path))
-        .spawn()
-        .expect("expected opener to start successfully");
+    let result_path = run_id.path(base_path).join(path);
+    open::that_detached(&result_path)
+        .expect(&format!("failed to open `{result_path}' with the system default application"));
 }
