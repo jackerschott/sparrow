@@ -51,7 +51,11 @@ impl Runner for DefaultRunner {
     }
 
     fn run(&self, host: &dyn Host, run_dir: &RunDirectory, run_id: &RunID) {
-        let run_cmd = &format!("cd {} && bash ./run.sh", run_dir.path());
+        let run_cmd = &format!(
+            "cd {run_dir_path} && {script_run_command}",
+            run_dir_path = run_dir.path(),
+            script_run_command = host.script_run_command("./run.sh")
+        );
 
         let shell = std::env::var("SHELL").unwrap();
         let mut cmd = std::process::Command::new(shell);

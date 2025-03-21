@@ -5,12 +5,14 @@ use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 
 pub struct LocalHost {
     output_base_dir_path: PathBuf,
+    script_run_command_template: String,
 }
 
 impl LocalHost {
-    pub fn new(output_base_dir_path: &Path) -> Self {
+    pub fn new(output_base_dir_path: &Path, script_run_command_template: String) -> Self {
         return Self {
             output_base_dir_path: PathBuf::from(output_base_dir_path),
+            script_run_command_template,
         };
     }
 }
@@ -21,6 +23,9 @@ impl Host for LocalHost {
     }
     fn hostname(&self) -> &str {
         "localhost"
+    }
+    fn script_run_command(&self, script_path: &str) -> String {
+        return self.script_run_command_template.replace("{}", script_path)
     }
     fn output_base_dir_path(&self) -> &Path {
         &self.output_base_dir_path.as_path()

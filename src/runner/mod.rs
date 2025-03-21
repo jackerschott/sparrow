@@ -30,7 +30,10 @@ pub trait Runner {
     }
 }
 
-pub fn build_runner(cmdline: &Vec<String>, config: Option<RunnerConfig>) -> Box<dyn Runner> {
+pub fn build_runner(
+    cmdline: &Vec<String>,
+    config: Option<RunnerConfig>,
+) -> Box<dyn Runner> {
     let config = config.unwrap_or_default();
 
     let variable_transfer_requests = config

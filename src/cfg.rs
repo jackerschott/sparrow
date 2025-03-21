@@ -65,6 +65,7 @@ pub struct QuickRunConfig {
 #[derive(Deserialize)]
 pub struct RemoteHostConfig {
     pub hostname: String,
+    pub script_run_command_template: Option<String>,
     pub run_output_base_dir: PathBuf,
     pub temporary_dir: PathBuf,
     pub quick_run: QuickRunConfig,
@@ -73,6 +74,7 @@ pub struct RemoteHostConfig {
 #[derive(Deserialize)]
 pub struct LocalHostConfig {
     pub run_output_base_dir: PathBuf,
+    pub script_run_command_template: Option<String>,
 }
 
 #[derive(Deserialize, Default)]

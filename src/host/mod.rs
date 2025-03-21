@@ -21,6 +21,7 @@ use url::Url;
 pub trait Host {
     fn id(&self) -> &str;
     fn hostname(&self) -> &str;
+    fn script_run_command(&self, script_path: &str) -> String;
     fn output_base_dir_path(&self) -> &Path;
     fn is_local(&self) -> bool;
     fn is_configured_for_quick_run(&self) -> bool;
@@ -248,6 +249,7 @@ pub fn build_host(
     if host_id == "local" {
         Ok(Box::new(LocalHost::new(
             local_config.run_output_base_dir.as_path(),
+            local_config.script_run_command_template.clone().unwrap_or(String::from("bash {}")),
         )))
     } else if remote_configs.contains_key(host_id) {
         let quick_run_config = if !configure_for_quick_run {
@@ -259,6 +261,7 @@ pub fn build_host(
         Ok(Box::new(SlurmClusterHost::new(
             &host_id,
             remote_configs[host_id].hostname.as_str(),
+            remote_configs[host_id].script_run_command_template.clone().unwrap_or(String::from("bash {}")),
             remote_configs[host_id].run_output_base_dir.as_path(),
             remote_configs[host_id].temporary_dir.as_path(),
             quick_run_config,

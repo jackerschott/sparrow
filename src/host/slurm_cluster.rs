@@ -13,6 +13,7 @@ pub enum QuickRun {
 
 pub struct SlurmClusterHost {
     id: String,
+    script_run_command_template: String,
     output_base_dir_path: PathBuf,
     temporary_dir_path: PathBuf,
 
@@ -27,6 +28,7 @@ impl SlurmClusterHost {
     pub fn new(
         id: &str,
         hostname: &str,
+        script_run_command_template: String,
         output_base_dir_path: &Path,
         temporary_dir_path: &Path,
         quick_run_config: QuickRun,
@@ -51,6 +53,7 @@ impl SlurmClusterHost {
         return Self {
             id: id.to_owned(),
             hostname: hostname.to_owned(),
+            script_run_command_template,
             output_base_dir_path: output_base_dir_path.to_owned(),
             temporary_dir_path: temporary_dir_path.to_owned(),
             connection,
@@ -258,6 +261,9 @@ impl Host for SlurmClusterHost {
     }
     fn hostname(&self) -> &str {
         &self.hostname
+    }
+    fn script_run_command(&self, script_path: &str) -> String {
+        return self.script_run_command_template.replace("{}", script_path)
     }
     fn output_base_dir_path(&self) -> &Path {
         &self.output_base_dir_path.as_path()
