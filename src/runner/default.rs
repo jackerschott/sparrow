@@ -92,7 +92,7 @@ impl Runner for DefaultRunner {
                 .join(" ")
         );
         cmd.arg(&format!(
-            "ssh -tt {hostname} 'cd {} && {run_cmd_wrapped_with_variables}'",
+            "ssh -qtt {hostname} 'cd {} && {run_cmd_wrapped_with_variables}'",
             run_dir.path()
         ))
         .exec();
