@@ -20,6 +20,7 @@ pub struct SlurmClusterHost {
     hostname: String,
     connection: Connection,
     quick_run_config: QuickRun,
+    quick_run_service_quality: Option<String>,
 }
 
 impl SlurmClusterHost {
@@ -32,6 +33,7 @@ impl SlurmClusterHost {
         output_base_dir_path: &Path,
         temporary_dir_path: &Path,
         quick_run_config: QuickRun,
+        quick_run_service_quality: Option<String>,
     ) -> Self {
         let hostname = if let QuickRun::Enabled = quick_run_config {
             &format!("{hostname}-quick")
@@ -58,6 +60,7 @@ impl SlurmClusterHost {
             temporary_dir_path: temporary_dir_path.to_owned(),
             connection,
             quick_run_config,
+            quick_run_service_quality,
         };
     }
 }
@@ -72,12 +75,11 @@ impl SlurmClusterHost {
     ) {
         let submission_script = Self::build_quick_run_towel_job_script(fast_access_container_paths);
 
-        let partition_ids = self.get_quick_run_towel_partition_ids();
         let submission_options = Self::quick_run_towel_job_submission_options(
+            self.quick_run_service_quality.clone(),
             time,
             cpu_count,
             gpu_count,
-            &partition_ids,
         );
 
         let log_path = self.quick_run_towel_log_path();
@@ -120,31 +122,12 @@ impl SlurmClusterHost {
         return !node_name.is_empty();
     }
 
-    fn get_quick_run_towel_partition_ids(&self) -> Vec<String> {
-        let sinfo_output = self
-            .connection
-            .command("sinfo")
-            .arg("-ho %R")
-            .output()
-            .expect("expected sinfo to succeed");
-
-        let partition_ids =
-            String::from_utf8(sinfo_output.stdout).expect("expected sinfo output to be utf-8");
-        let partition_ids = partition_ids
-            .trim()
-            .split("\n")
-            .map(|s| s.trim().to_owned());
-
-        return partition_ids
-            .filter(|id| id.contains("gpu") && !id.contains("debug"))
-            .collect();
-    }
-
     fn submit_quick_run_towel_job(&self, script: &str, options: &Vec<String>, log_path: &Path) {
-        let mut submission_command = self.connection.command("sbatch");
+        let mut submission_command = self.connection.command("salloc");
         let mut submission_command = submission_command
             .arg(&format!("--output={log_path}"))
             .args(options)
+            .arg("bash -")
             .stdin(openssh::Stdio::piped())
             .spawn()
             .expect("expected sbatch to succeed");
@@ -183,9 +166,6 @@ impl SlurmClusterHost {
             concat!(
                 "#!/bin/bash\n",
                 "{}\n",
-                "for var in $(env | grep '^SLURM' | cut -d= -f1); do\n",
-                "    unset $var;\n",
-                "done\n",
                 "printf \"Going to sleep...\"\n",
                 "sleep 1d",
             ),
@@ -194,19 +174,26 @@ impl SlurmClusterHost {
     }
 
     fn quick_run_towel_job_submission_options(
+        quality_of_service: Option<String>,
         time: &str,
         cpu_count: u16,
         gpu_count: u16,
-        partition_ids: &Vec<String>,
     ) -> Vec<String> {
-        vec![
+        let mut options = Vec::new();
+
+        if let Some(quality_of_service) = quality_of_service {
+            options.push(quality_of_service.clone())
+        }
+
+        options.extend(vec![
             format!("--job-name={}", Self::QUICK_RUN_TOWEL_JOB_NAME),
             format!("--nodes=1-1"),
             format!("--time={time}"),
             format!("--cpus-per-task={cpu_count}"),
             format!("--gpus={gpu_count}"),
-            format!("--partition={}", partition_ids.join(",")),
-        ]
+        ]);
+
+        return options;
     }
 
     fn tail_quick_run_towel_submission_log(&self, log_path: &Path) {

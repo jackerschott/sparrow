@@ -265,6 +265,7 @@ pub fn build_host(
             remote_configs[host_id].run_output_base_dir.as_path(),
             remote_configs[host_id].temporary_dir.as_path(),
             quick_run_config,
+            remote_configs[host_id].quick_run.service_quality.clone(),
         )))
     } else {
         Err(format!("Unknown host id: {}", host_id))

@@ -56,6 +56,7 @@ pub struct PayloadMappingConfig {
 
 #[derive(Deserialize)]
 pub struct QuickRunConfig {
+    pub service_quality: Option<String>,
     pub time: String,
     pub cpu_count: u16,
     pub gpu_count: u16,
