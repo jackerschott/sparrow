@@ -270,7 +270,6 @@ fn main() {
                 gpu_count,
                 &config.remote_hosts[&host_id].quick_run,
             ));
-            host.wait_for_preparation();
         }
         Some(RunnerCommandConfig::RemoteClearQuickRun { host }) => {
             if host == "local" {

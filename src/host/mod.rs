@@ -13,7 +13,7 @@ use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use git2::Repository;
 use local::LocalHost;
 use rsync::{copy_directory, SyncOptions};
-use slurm_cluster::{QuickRun, SlurmClusterHost};
+use slurm_cluster::{QuickRunPreparationOptions, SlurmClusterHost};
 use tempfile::NamedTempFile;
 use tempfile::TempDir;
 use url::Url;
@@ -139,7 +139,6 @@ pub trait Host {
     fn prepare_quick_run(&self, options: &QuickRunPrepOptions);
     #[allow(unused)]
     fn quick_run_is_prepared(&self) -> bool;
-    fn wait_for_preparation(&self);
     fn clear_preparation(&self);
 
     fn runs(&self) -> Vec<RunID>;
@@ -252,20 +251,18 @@ pub fn build_host(
             local_config.script_run_command_template.clone().unwrap_or(String::from("bash {}")),
         )))
     } else if remote_configs.contains_key(host_id) {
-        let quick_run_config = if !configure_for_quick_run {
-            QuickRun::Disabled
-        } else {
-            QuickRun::Enabled
-        };
-
         Ok(Box::new(SlurmClusterHost::new(
             &host_id,
             remote_configs[host_id].hostname.as_str(),
             remote_configs[host_id].script_run_command_template.clone().unwrap_or(String::from("bash {}")),
             remote_configs[host_id].run_output_base_dir.as_path(),
             remote_configs[host_id].temporary_dir.as_path(),
-            quick_run_config,
-            remote_configs[host_id].quick_run.service_quality.clone(),
+            QuickRunPreparationOptions {
+                slurm_account: remote_configs[host_id].quick_run.account.clone(),
+                slurm_service_quality: remote_configs[host_id].quick_run.service_quality.clone(),
+                node_local_storage_path: remote_configs[host_id].quick_run.node_local_storage_path.clone(),
+            },
+            configure_for_quick_run
         )))
     } else {
         Err(format!("Unknown host id: {}", host_id))

@@ -6,9 +6,10 @@ use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use std::os::unix::process::CommandExt;
 use tokio::io::AsyncWriteExt;
 
-pub enum QuickRun {
-    Disabled,
-    Enabled,
+pub struct QuickRunPreparationOptions {
+    pub slurm_account: String,
+    pub slurm_service_quality: Option<String>,
+    pub node_local_storage_path: PathBuf,
 }
 
 pub struct SlurmClusterHost {
@@ -19,8 +20,7 @@ pub struct SlurmClusterHost {
 
     hostname: String,
     connection: Connection,
-    quick_run_config: QuickRun,
-    quick_run_service_quality: Option<String>,
+    quick_run_preparation: QuickRunPreparationOptions,
 }
 
 impl SlurmClusterHost {
@@ -32,10 +32,10 @@ impl SlurmClusterHost {
         script_run_command_template: String,
         output_base_dir_path: &Path,
         temporary_dir_path: &Path,
-        quick_run_config: QuickRun,
-        quick_run_service_quality: Option<String>,
+        quick_run_preparation: QuickRunPreparationOptions,
+        allow_quick_runs: bool,
     ) -> Self {
-        let hostname = if let QuickRun::Enabled = quick_run_config {
+        let hostname = if allow_quick_runs {
             &format!("{hostname}-quick")
         } else {
             hostname
@@ -45,7 +45,7 @@ impl SlurmClusterHost {
             Ok(connection) => connection,
             Err(e) => {
                 eprintln!("Failed to connect to host {}: {}", hostname, e);
-                if let QuickRun::Enabled = quick_run_config {
+                if allow_quick_runs {
                     eprintln!("Did you forget to prepare the remote?")
                 }
                 std::process::exit(1);
@@ -59,8 +59,7 @@ impl SlurmClusterHost {
             output_base_dir_path: output_base_dir_path.to_owned(),
             temporary_dir_path: temporary_dir_path.to_owned(),
             connection,
-            quick_run_config,
-            quick_run_service_quality,
+            quick_run_preparation,
         };
     }
 }
@@ -73,16 +72,21 @@ impl SlurmClusterHost {
         gpu_count: u16,
         fast_access_container_paths: &Vec<PathBuf>,
     ) {
-        let submission_script = Self::build_quick_run_towel_job_script(fast_access_container_paths);
+        let submission_script = Self::build_quick_run_towel_job_script(
+            fast_access_container_paths,
+            &self.quick_run_preparation.node_local_storage_path,
+        );
 
         let submission_options = Self::quick_run_towel_job_submission_options(
-            self.quick_run_service_quality.clone(),
+            self.quick_run_preparation.slurm_account.clone(),
+            self.quick_run_preparation.slurm_service_quality.clone(),
             time,
             cpu_count,
             gpu_count,
         );
 
         let log_path = self.quick_run_towel_log_path();
+        self.remove_quick_run_towel_submission_log(&log_path);
         self.submit_quick_run_towel_job(&submission_script, &submission_options, &log_path);
     }
 
@@ -125,9 +129,11 @@ impl SlurmClusterHost {
     fn submit_quick_run_towel_job(&self, script: &str, options: &Vec<String>, log_path: &Path) {
         let mut submission_command = self.connection.command("salloc");
         let mut submission_command = submission_command
-            .arg(&format!("--output={log_path}"))
             .args(options)
-            .arg("bash -")
+            .arg("--")
+            .arg("bash")
+            .arg("-c")
+            .arg(&format!("bash - > \"{log_path}\""))
             .stdin(openssh::Stdio::piped())
             .spawn()
             .expect("expected sbatch to succeed");
@@ -140,12 +146,20 @@ impl SlurmClusterHost {
             .block_on(stdin.write_all(script.as_bytes()))
             .expect("expected stdin write to succeed");
 
+        // we have to wait until stdin is succesfully sent to salloc
+        // otherwise salloc will exit due to a broken pipe when
+        // submission_command disconnects goes out of scope
+        std::thread::sleep(std::time::Duration::from_secs(3));
+
         self.connection
-            .block_on(submission_command.wait())
-            .expect("expected sbatch to succeed");
+            .block_on(submission_command.disconnect())
+            .expect("expected salloc to succeed");
     }
 
-    fn build_quick_run_towel_job_script(fast_access_container_paths: &Vec<PathBuf>) -> String {
+    fn build_quick_run_towel_job_script(
+        fast_access_container_paths: &Vec<PathBuf>,
+        node_local_storage_path: &Path,
+    ) -> String {
         let container_copy_loop = if fast_access_container_paths.is_empty() {
             ""
         } else {
@@ -157,7 +171,7 @@ impl SlurmClusterHost {
             &format!(
                 "\
                 for container_file in {fast_access_container_paths}; do\n\
-                    rsync --progress $container_file /scratch/\n\
+                    rsync --progress $container_file {node_local_storage_path}/\n\
                 done",
             )
         };
@@ -174,15 +188,16 @@ impl SlurmClusterHost {
     }
 
     fn quick_run_towel_job_submission_options(
+        account: String,
         quality_of_service: Option<String>,
         time: &str,
         cpu_count: u16,
         gpu_count: u16,
     ) -> Vec<String> {
-        let mut options = Vec::new();
+        let mut options = vec![format!("--account={account}")];
 
         if let Some(quality_of_service) = quality_of_service {
-            options.push(quality_of_service.clone())
+            options.push(format!("--qos={quality_of_service}"));
         }
 
         options.extend(vec![
@@ -193,7 +208,25 @@ impl SlurmClusterHost {
             format!("--gpus={gpu_count}"),
         ]);
 
+        if gpu_count > 0 {
+            options.push(format!("--constraint=gpu"));
+        }
+
         return options;
+    }
+
+    fn remove_quick_run_towel_submission_log(&self, log_path: &Path) {
+        self.connection
+            .block_on(
+                self.connection
+                    .command("rm")
+                    .arg("-f")
+                    .arg(log_path)
+                    .spawn()
+                    .expect("expected quick run towel submission log removal to succeed")
+                    .wait(),
+            )
+            .expect("expected wait for quick run towel submission log removal to succeed");
     }
 
     fn tail_quick_run_towel_submission_log(&self, log_path: &Path) {
@@ -250,7 +283,7 @@ impl Host for SlurmClusterHost {
         &self.hostname
     }
     fn script_run_command(&self, script_path: &str) -> String {
-        return self.script_run_command_template.replace("{}", script_path)
+        return self.script_run_command_template.replace("{}", script_path);
     }
     fn output_base_dir_path(&self) -> &Path {
         &self.output_base_dir_path.as_path()
@@ -294,37 +327,25 @@ impl Host for SlurmClusterHost {
     }
 
     fn prepare_quick_run(&self, options: &QuickRunPrepOptions) {
-        match &self.quick_run_config {
-            QuickRun::Enabled => {}
-            QuickRun::Disabled => match &options {
-                QuickRunPrepOptions::SlurmCluster {
-                    time,
-                    cpu_count,
-                    gpu_count,
-                    fast_access_container_paths,
-                } => self.allocate_quick_run_node(
+        match &options {
+            QuickRunPrepOptions::SlurmCluster {
+                time,
+                cpu_count,
+                gpu_count,
+                fast_access_container_paths,
+            } => {
+                self.allocate_quick_run_node(
                     &time,
                     *cpu_count,
                     *gpu_count,
                     fast_access_container_paths,
-                ),
-            },
-        }
-    }
-    fn quick_run_is_prepared(&self) -> bool {
-        match &self.quick_run_config {
-            QuickRun::Enabled => true,
-            QuickRun::Disabled => self.has_allocated_quick_run_node(),
-        }
-    }
-
-    fn wait_for_preparation(&self) {
-        match &self.quick_run_config {
-            QuickRun::Enabled => {}
-            QuickRun::Disabled => {
+                );
                 self.tail_quick_run_towel_submission_log(&self.quick_run_towel_log_path())
             }
         }
+    }
+    fn quick_run_is_prepared(&self) -> bool {
+        self.has_allocated_quick_run_node()
     }
 
     fn clear_preparation(&self) {

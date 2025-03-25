@@ -56,11 +56,13 @@ pub struct PayloadMappingConfig {
 
 #[derive(Deserialize)]
 pub struct QuickRunConfig {
+    pub account: String,
     pub service_quality: Option<String>,
     pub time: String,
     pub cpu_count: u16,
     pub gpu_count: u16,
     pub fast_access_container_requests: Vec<PathBuf>,
+    pub node_local_storage_path: PathBuf,
 }
 
 #[derive(Deserialize)]

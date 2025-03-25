@@ -61,7 +61,6 @@ impl Host for LocalHost {
     fn quick_run_is_prepared(&self) -> bool {
         true
     }
-    fn wait_for_preparation(&self) {}
     fn clear_preparation(&self) {}
 
     fn runs(&self) -> Vec<RunID> {
