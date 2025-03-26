@@ -122,6 +122,7 @@ mod runner;
 mod utils;
 
 use crate::utils::select_interactively;
+use anyhow::{anyhow, Context, Result};
 use cfg::*;
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
@@ -131,12 +132,12 @@ use payload::build_payload_mapping;
 use runner::{build_runner, RunInfo};
 use utils::AsUtf8Path;
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if cli.print_completion {
         generate(Fish, &mut Cli::command(), "sparrow", &mut std::io::stdout());
-        return;
+        return Ok(());
     }
 
     let config_path = std::env::current_dir()
@@ -202,7 +203,7 @@ fn main() {
             let run_script = runner.create_run_script(&run_info);
             if only_print_run_script {
                 print_run_script(run_script);
-                return;
+                return Ok(());
             }
 
             println!(
@@ -258,22 +259,27 @@ fn main() {
             cpu_count,
         }) => {
             if host_id == "local" {
-                eprintln!("Cannot prepare quick run on local host");
-                std::process::exit(1);
+                return Err(anyhow!("cannot prepare quick run on local host"));
             }
 
             let host = build_host(&host_id, &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
+            if host.quick_run_is_prepared()
+                .context(format!("failed to check for the quick preparation of {}", host.id()))? {
+                println!("quick run is already prepared for {host}", host=host.id());
+                return Ok(());
+            }
+
             host.prepare_quick_run(&QuickRunPrepOptions::build(
                 time.as_deref(),
                 cpu_count,
                 gpu_count,
                 &config.remote_hosts[&host_id].quick_run,
-            ));
+            )).context(format!("failed to prepare {} for quick runs", host.id()))?;
         }
         Some(RunnerCommandConfig::RemoteClearQuickRun { host }) => {
             if host == "local" {
-                eprintln!("Cannot prepare quick run on local host");
+                eprintln!("cannot prepare quick run on local host");
                 std::process::exit(1);
             }
 
@@ -392,6 +398,8 @@ fn main() {
             std::process::exit(1);
         }
     }
+
+    Ok(())
 }
 
 fn print_run_script(run_script: tempfile::NamedTempFile) {

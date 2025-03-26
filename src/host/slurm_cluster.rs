@@ -2,9 +2,11 @@ use super::connection::Connection;
 use super::rsync::SyncOptions;
 use super::{Host, QuickRunPrepOptions, RunDirectory, RunID, RunOutputSyncOptions};
 use crate::utils::Utf8Path;
+use anyhow::{anyhow, Context, Result};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
+use core::str;
 use std::os::unix::process::CommandExt;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub struct QuickRunPreparationOptions {
     pub slurm_account: String,
@@ -71,7 +73,7 @@ impl SlurmClusterHost {
         cpu_count: u16,
         gpu_count: u16,
         fast_access_container_paths: &Vec<PathBuf>,
-    ) {
+    ) -> Result<()> {
         let submission_script = Self::build_quick_run_towel_job_script(
             fast_access_container_paths,
             &self.quick_run_preparation.node_local_storage_path,
@@ -85,9 +87,10 @@ impl SlurmClusterHost {
             gpu_count,
         );
 
-        let log_path = self.quick_run_towel_log_path();
-        self.remove_quick_run_towel_submission_log(&log_path);
-        self.submit_quick_run_towel_job(&submission_script, &submission_options, &log_path);
+        self.submit_quick_run_towel_job(&submission_script, &submission_options)
+            .context("failed to submit quick run towel job")?;
+
+        Ok(())
     }
 
     pub fn deallocate_quick_run_node(&self) {
@@ -104,56 +107,115 @@ impl SlurmClusterHost {
         }
     }
 
-    pub fn has_allocated_quick_run_node(&self) -> bool {
+    pub fn has_allocated_quick_run_node(&self) -> Result<bool> {
+        let check_command_inner = format!(
+            "squeue --noheader --format %%t --user $USER --name {}",
+            Self::QUICK_RUN_TOWEL_JOB_NAME
+        );
+        let check_command = format!("bash -c \"{check_command_inner}\"");
+
         let output = self
             .connection
-            .command("squeue")
-            .stdout(openssh::Stdio::null())
-            .args(&[
-                "--noheader",
-                "--format %%N",
-                "--user",
-                "ackersch",
-                "--name",
-                Self::QUICK_RUN_TOWEL_JOB_NAME,
-            ])
+            .command("bash")
+            .arg("-c")
+            .arg(check_command_inner)
+            .stdout(openssh::Stdio::piped())
+            .stderr(openssh::Stdio::piped())
             .output()
             .expect("expected squeue to succeed");
+        if !output.status.success() {
+            let error_message = String::from_utf8(output.stderr).context(format!(
+                "failed to run `{check_command}' on {id} and couldn't read the \
+                    error message due to a failure to convert it to utf8",
+                id = self.id()
+            ))?;
+            eprintln!("{error_message}");
 
-        let output = String::from_utf8(output.stdout).expect("expected squeue output to be utf-8");
-        let node_name = output.trim();
+            return Err(anyhow!("failed to run `{check_command}`"));
+        }
 
-        return !node_name.is_empty();
+        let output = String::from_utf8(output.stdout).context(format!(
+            "failed to convert the output of `{check_command}' (run on {id}) to utf8",
+            id = self.id()
+        ))?;
+        let job_status = output.trim();
+
+        return Ok(job_status == "R");
     }
 
-    fn submit_quick_run_towel_job(&self, script: &str, options: &Vec<String>, log_path: &Path) {
+    fn submit_quick_run_towel_job(&self, script: &str, options: &Vec<String>) -> Result<()> {
         let mut submission_command = self.connection.command("salloc");
+        let submission_commmand_string =
+            format!("salloc {} -- bash -c \"bash -\"", options.join(" "));
         let mut submission_command = submission_command
             .args(options)
             .arg("--")
             .arg("bash")
             .arg("-c")
-            .arg(&format!("bash - > \"{log_path}\""))
+            .arg(&format!("bash -"))
             .stdin(openssh::Stdio::piped())
+            .stdout(openssh::Stdio::piped())
             .spawn()
-            .expect("expected sbatch to succeed");
+            .context(format!(
+                "failed to execute `{submission_commmand_string}' on {hostname}",
+                hostname = self.hostname
+            ))?;
 
-        let stdin = submission_command
-            .stdin()
-            .as_mut()
-            .expect("expected stdin to be open");
+        let stdin = submission_command.stdin().as_mut().context(format!(
+            "failed to open stdin of `{submission_commmand_string}'"
+        ))?;
         self.connection
             .block_on(stdin.write_all(script.as_bytes()))
-            .expect("expected stdin write to succeed");
+            .context(format!(
+                "failed to write to stdin of `{submission_commmand_string}'"
+            ))?;
 
-        // we have to wait until stdin is succesfully sent to salloc
-        // otherwise salloc will exit due to a broken pipe when
-        // submission_command disconnects goes out of scope
-        std::thread::sleep(std::time::Duration::from_secs(3));
+        let stdout = submission_command.stdout().as_mut().context(format!(
+            "failed to open stdout of `{submission_commmand_string}'"
+        ))?;
+
+        let mut output = [0u8; 10_000];
+        const OUTPUT_CHUNK_COUNT_MAX: u16 = 1000;
+        let output_chunks = (0..OUTPUT_CHUNK_COUNT_MAX)
+            .into_iter()
+            .map(|_| {
+                let output_length =
+                    self.connection
+                        .block_on(stdout.read(&mut output))
+                        .context(format!(
+                            "failed to read stdout of `{submission_commmand_string}'`"
+                        ))?;
+                let output =
+                    String::from_utf8(output[..output_length].to_vec()).context(format!(
+                        "failed to convert some output of `{submission_commmand_string}' to utf8"
+                    ))?;
+                if !output.is_empty() {
+                    println!("{output}");
+                }
+
+                Ok(output)
+            })
+            .take_while(|output_chunk| {
+                output_chunk
+                    .as_ref()
+                    .map_or(false, |chunk| chunk != "Going to sleep...")
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if output_chunks.len() as u16 == OUTPUT_CHUNK_COUNT_MAX {
+            return Err(anyhow!(
+                "failed to read the `Going to sleep...' line using `{}' \
+                output chunks indicating the success for the quick run towel job",
+                OUTPUT_CHUNK_COUNT_MAX
+            ));
+        }
 
         self.connection
             .block_on(submission_command.disconnect())
-            .expect("expected salloc to succeed");
+            .context(format!(
+                "failed to disconnect from `{submission_commmand_string}'"
+            ))?;
+
+        Ok(())
     }
 
     fn build_quick_run_towel_job_script(
@@ -214,65 +276,6 @@ impl SlurmClusterHost {
 
         return options;
     }
-
-    fn remove_quick_run_towel_submission_log(&self, log_path: &Path) {
-        self.connection
-            .block_on(
-                self.connection
-                    .command("rm")
-                    .arg("-f")
-                    .arg(log_path)
-                    .spawn()
-                    .expect("expected quick run towel submission log removal to succeed")
-                    .wait(),
-            )
-            .expect("expected wait for quick run towel submission log removal to succeed");
-    }
-
-    fn tail_quick_run_towel_submission_log(&self, log_path: &Path) {
-        let mut tail_command = self.connection.command("tail");
-        let tail_command = tail_command
-            .arg("--follow=name")
-            .arg("--retry")
-            .arg("--quiet")
-            .arg(log_path.as_str())
-            .spawn()
-            .expect("expected tail to succeed");
-
-        loop {
-            let output = self
-                .connection
-                .command("cat")
-                .arg(log_path.as_str())
-                .output()
-                .expect("expected cat to succeed");
-            if !output.status.success() {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                continue;
-            }
-
-            let log_content =
-                String::from_utf8(output.stdout).expect("expected cat output to be utf-8");
-            let last_line = log_content
-                .trim()
-                .split("\n")
-                .last()
-                .expect("expected cat output to have at least one line");
-            if last_line == "Going to sleep..." {
-                break;
-            }
-
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-
-        self.connection
-            .block_on(tail_command.disconnect())
-            .expect("expected tail disconnect to succeed");
-    }
-
-    fn quick_run_towel_log_path(&self) -> PathBuf {
-        self.temporary_dir_path.join("quick-run-towel.log")
-    }
 }
 
 impl Host for SlurmClusterHost {
@@ -326,7 +329,7 @@ impl Host for SlurmClusterHost {
             .expect(&format!("expected mkdir {path} to succeed"));
     }
 
-    fn prepare_quick_run(&self, options: &QuickRunPrepOptions) {
+    fn prepare_quick_run(&self, options: &QuickRunPrepOptions) -> Result<()> {
         match &options {
             QuickRunPrepOptions::SlurmCluster {
                 time,
@@ -339,12 +342,13 @@ impl Host for SlurmClusterHost {
                     *cpu_count,
                     *gpu_count,
                     fast_access_container_paths,
-                );
-                self.tail_quick_run_towel_submission_log(&self.quick_run_towel_log_path())
+                )?;
             }
         }
+
+        Ok(())
     }
-    fn quick_run_is_prepared(&self) -> bool {
+    fn quick_run_is_prepared(&self) -> Result<bool> {
         self.has_allocated_quick_run_node()
     }
 

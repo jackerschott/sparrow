@@ -1,6 +1,7 @@
 use super::rsync::{copy_directory, SyncOptions};
 use super::{Host, QuickRunPrepOptions, RunDirectory, RunID, RunOutputSyncOptions};
 use crate::utils::{AsUtf8Path, Utf8Str};
+use anyhow::Result;
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 
 pub struct LocalHost {
@@ -57,9 +58,9 @@ impl Host for LocalHost {
         std::fs::create_dir_all(path).expect(&format!("expected creation of {path} to work"));
     }
 
-    fn prepare_quick_run(&self, _options: &QuickRunPrepOptions) {}
-    fn quick_run_is_prepared(&self) -> bool {
-        true
+    fn prepare_quick_run(&self, _options: &QuickRunPrepOptions) -> Result<()> { Ok(()) }
+    fn quick_run_is_prepared(&self) -> Result<bool> {
+        Ok(true)
     }
     fn clear_preparation(&self) {}
 

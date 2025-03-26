@@ -68,7 +68,7 @@ impl Connection {
 
 pub struct Command<'c> {
     async_runtime: &'c tokio::runtime::Runtime,
-    command: openssh::OwningCommand<&'c openssh::Session>,
+    pub command: openssh::OwningCommand<&'c openssh::Session>,
 }
 
 impl<'c> Command<'c> {
@@ -112,5 +112,11 @@ impl<'c> Command<'c> {
 
     pub fn spawn(&'c mut self) -> Result<openssh::Child<&'_ openssh::Session>, openssh::Error> {
         self.async_runtime.block_on(self.command.spawn())
+    }
+}
+
+impl std::fmt::Debug for Command<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.command)
     }
 }

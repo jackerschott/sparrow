@@ -9,6 +9,7 @@ use std::io::Write;
 use super::utils::Utf8Path;
 use crate::cfg::{LocalHostConfig, QuickRunConfig, RemoteHostConfig};
 use crate::payload::{AuxiliaryMapping, CodeMapping, CodeSource, ConfigSource};
+use anyhow::Result;
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use git2::Repository;
 use local::LocalHost;
@@ -136,9 +137,9 @@ pub trait Host {
     fn create_dir(&self, path: &Path);
     fn create_dir_all(&self, path: &Path);
 
-    fn prepare_quick_run(&self, options: &QuickRunPrepOptions);
+    fn prepare_quick_run(&self, options: &QuickRunPrepOptions) -> Result<()>;
     #[allow(unused)]
-    fn quick_run_is_prepared(&self) -> bool;
+    fn quick_run_is_prepared(&self) -> Result<bool>;
     fn clear_preparation(&self);
 
     fn runs(&self) -> Vec<RunID>;
