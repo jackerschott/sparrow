@@ -46,7 +46,7 @@ impl SlurmClusterHost {
         let connection = match Connection::new(hostname) {
             Ok(connection) => connection,
             Err(e) => {
-                eprintln!("Failed to connect to host {}: {}", hostname, e);
+                eprintln!("Failed to connect to host {}: {:?}", hostname, e);
                 if allow_quick_runs {
                     eprintln!("Did you forget to prepare the remote?")
                 }
@@ -69,6 +69,8 @@ impl SlurmClusterHost {
 impl SlurmClusterHost {
     pub fn allocate_quick_run_node(
         &self,
+        constraint: &Option<String>,
+        partitions: &Option<Vec<String>>,
         time: &str,
         cpu_count: u16,
         gpu_count: u16,
@@ -82,6 +84,8 @@ impl SlurmClusterHost {
         let submission_options = Self::quick_run_towel_job_submission_options(
             self.quick_run_preparation.slurm_account.clone(),
             self.quick_run_preparation.slurm_service_quality.clone(),
+            constraint,
+            partitions,
             time,
             cpu_count,
             gpu_count,
@@ -174,8 +178,9 @@ impl SlurmClusterHost {
             "failed to open stdout of `{submission_commmand_string}'"
         ))?;
 
-        let mut output = [0u8; 10_000];
-        const OUTPUT_CHUNK_COUNT_MAX: u16 = 1000;
+        const OUTPUT_CHUNK_COUNT_MAX: u16 = 10_000;
+        const OUTPUT_CHUNK_SIZE: usize = 1_000;
+        let mut output = [0u8; OUTPUT_CHUNK_SIZE];
         let output_chunks = (0..OUTPUT_CHUNK_COUNT_MAX)
             .into_iter()
             .map(|_| {
@@ -203,9 +208,11 @@ impl SlurmClusterHost {
             .collect::<Result<Vec<_>>>()?;
         if output_chunks.len() as u16 == OUTPUT_CHUNK_COUNT_MAX {
             return Err(anyhow!(
-                "failed to read the `Going to sleep...' line using `{}' \
-                output chunks indicating the success for the quick run towel job",
-                OUTPUT_CHUNK_COUNT_MAX
+                "failed to read the `Going to sleep...' line using {chunk_count} \
+                output chunks of size {chunk_size} indicating the success of `{command}'",
+                chunk_count = OUTPUT_CHUNK_COUNT_MAX,
+                chunk_size = OUTPUT_CHUNK_SIZE,
+                command = submission_commmand_string
             ));
         }
 
@@ -252,6 +259,8 @@ impl SlurmClusterHost {
     fn quick_run_towel_job_submission_options(
         account: String,
         quality_of_service: Option<String>,
+        constraint: &Option<String>,
+        partitions: &Option<Vec<String>>,
         time: &str,
         cpu_count: u16,
         gpu_count: u16,
@@ -262,6 +271,14 @@ impl SlurmClusterHost {
             options.push(format!("--qos={quality_of_service}"));
         }
 
+        if let Some(partitions) = partitions {
+            options.push(format!("--partition={}", partitions.join(",")))
+        }
+
+        if let Some(constraint) = constraint {
+            options.push(format!("--constraint={constraint}"));
+        }
+
         options.extend(vec![
             format!("--job-name={}", Self::QUICK_RUN_TOWEL_JOB_NAME),
             format!("--nodes=1-1"),
@@ -270,9 +287,6 @@ impl SlurmClusterHost {
             format!("--gpus={gpu_count}"),
         ]);
 
-        if gpu_count > 0 {
-            options.push(format!("--constraint=gpu"));
-        }
 
         return options;
     }
@@ -332,12 +346,16 @@ impl Host for SlurmClusterHost {
     fn prepare_quick_run(&self, options: &QuickRunPrepOptions) -> Result<()> {
         match &options {
             QuickRunPrepOptions::SlurmCluster {
+                constraint,
+                partitions,
                 time,
                 cpu_count,
                 gpu_count,
                 fast_access_container_paths,
             } => {
                 self.allocate_quick_run_node(
+                    constraint,
+                    partitions,
                     &time,
                     *cpu_count,
                     *gpu_count,

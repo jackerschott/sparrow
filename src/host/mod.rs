@@ -171,6 +171,8 @@ impl RunDirectory {
 
 pub enum QuickRunPrepOptions {
     SlurmCluster {
+        constraint: Option<String>,
+        partitions: Option<Vec<String>>,
         time: String,
         cpu_count: u16,
         gpu_count: u16,
@@ -183,9 +185,12 @@ impl QuickRunPrepOptions {
         time: Option<&str>,
         cpu_count: Option<u16>,
         gpu_count: Option<u16>,
+        constraint: Option<String>,
         quick_run_config: &QuickRunConfig,
     ) -> Self {
         QuickRunPrepOptions::SlurmCluster {
+            constraint: constraint.or(quick_run_config.constraint.clone()),
+            partitions: quick_run_config.partitions.clone(),
             time: time.unwrap_or(&quick_run_config.time).to_owned(),
             cpu_count: cpu_count.unwrap_or(quick_run_config.cpu_count),
             gpu_count: gpu_count.unwrap_or(quick_run_config.gpu_count),

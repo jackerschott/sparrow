@@ -257,6 +257,7 @@ fn main() -> Result<()> {
             time,
             gpu_count,
             cpu_count,
+            constraint,
         }) => {
             if host_id == "local" {
                 return Err(anyhow!("cannot prepare quick run on local host"));
@@ -274,6 +275,7 @@ fn main() -> Result<()> {
                 time.as_deref(),
                 cpu_count,
                 gpu_count,
+                constraint,
                 &config.remote_hosts[&host_id].quick_run,
             )).context(format!("failed to prepare {} for quick runs", host.id()))?;
         }

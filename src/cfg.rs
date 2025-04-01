@@ -58,6 +58,8 @@ pub struct PayloadMappingConfig {
 pub struct QuickRunConfig {
     pub account: String,
     pub service_quality: Option<String>,
+    pub constraint: Option<String>,
+    pub partitions: Option<Vec<String>>,
     pub time: String,
     pub cpu_count: u16,
     pub gpu_count: u16,
@@ -175,6 +177,9 @@ pub enum RunnerCommandConfig {
 
         #[arg(short = 'g', long)]
         gpu_count: Option<u16>,
+
+        #[arg(short = 's', long)]
+        constraint: Option<String>,
     },
     RemoteClearQuickRun {
         #[arg(
