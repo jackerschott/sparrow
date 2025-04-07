@@ -17,7 +17,8 @@ pub struct GlobalConfig {
 #[derive(Deserialize)]
 pub struct LocalCodeSourceConfig {
     pub path: PathBuf,
-    pub excludes: Option<Vec<String>>,
+    pub gitignore_exclude_additions: Option<Vec<String>>,
+    pub gitignore_exclude_subtractions: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]

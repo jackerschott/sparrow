@@ -1,4 +1,5 @@
 use crate::cfg::PayloadMappingConfig;
+use anyhow::{anyhow, Context, Result};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use std::collections::HashMap;
 use url::Url;
@@ -80,20 +81,18 @@ pub fn build_payload_mapping(
     config_dir_override_path: Option<&Path>,
     ignore_revisions: &Vec<String>,
     config_base_dir: &Path,
-) -> PayloadMapping {
+) -> Result<PayloadMapping> {
     assert!(payload_mapping_config.config.entrypoint.is_relative());
 
-    ignore_revisions.iter().for_each(|ignore_id| {
+    for ignore_id in ignore_revisions.iter() {
         if !payload_mapping_config
             .code
             .iter()
             .any(|x| x.id == *ignore_id)
         {
-            eprintln!(
-                "cannot ignore revision of id `{}', not found in code mappings",
-                ignore_id
-            );
-            std::process::exit(1);
+            return Err(anyhow!(
+                "cannot ignore revision of id `{ignore_id}', not found in code mappings",
+            ));
         }
 
         if ignore_revisions
@@ -102,10 +101,11 @@ pub fn build_payload_mapping(
             .count()
             > 1
         {
-            eprintln!("found duplicate id `{ignore_id}' in revision ignore request");
-            std::process::exit(1);
+            return Err(anyhow!(
+                "found duplicate id `{ignore_id}' in revision ignore request"
+            ));
         }
-    });
+    }
 
     let config_dir_override_path = config_dir_override_path.map(|x| {
         x.is_relative()
@@ -131,9 +131,22 @@ pub fn build_payload_mapping(
                 .find(|id| *id == &code_mapping_config.id)
                 .is_some()
             {
+                let mut copy_excludes = read_excludes_from_gitignore()
+                    .context("failed to add excludes from gitignore")?;
+                if let Some(exclude_additions) =
+                    &code_mapping_config.local.gitignore_exclude_additions
+                {
+                    copy_excludes.extend(exclude_additions.clone());
+                }
+                if let Some(exclude_subtractions) =
+                    &code_mapping_config.local.gitignore_exclude_subtractions
+                {
+                    copy_excludes.retain(|pattern| !exclude_subtractions.contains(pattern));
+                }
+
                 CodeSource::Local {
                     path: code_mapping_config.local.path.clone(),
-                    copy_excludes: code_mapping_config.local.excludes.clone().unwrap_or(vec![]),
+                    copy_excludes,
                 }
             } else {
                 CodeSource::Remote {
@@ -142,13 +155,13 @@ pub fn build_payload_mapping(
                 }
             };
 
-            CodeMapping {
+            Ok(CodeMapping {
                 id: code_mapping_config.id.clone(),
                 source,
                 target_path: code_mapping_config.target.clone(),
-            }
+            })
         })
-        .collect();
+        .collect::<Result<_>>()?;
 
     let auxiliary_mappings = payload_mapping_config
         .auxiliary
@@ -162,12 +175,21 @@ pub fn build_payload_mapping(
         })
         .collect();
 
-    PayloadMapping {
+    Ok(PayloadMapping {
         code_mappings,
         config_source: ConfigSource {
             entrypoint_path: payload_mapping_config.config.entrypoint.clone(),
             dir_path: config_dir_path,
         },
         auxiliary_mappings,
-    }
+    })
+}
+
+fn read_excludes_from_gitignore() -> Result<Vec<String>> {
+    Ok(std::fs::read_to_string(".gitignore")
+        .context("failed to open `.gitignore', are you in the project root?")?
+        .lines()
+        .filter(|line| !line.starts_with("#") && !line.is_empty())
+        .map(String::from)
+        .collect())
 }

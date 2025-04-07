@@ -197,7 +197,7 @@ fn main() -> Result<()> {
                 config_path
                     .parent()
                     .expect("expected config path to have a parent"),
-            );
+            ).context("failed to build payload mapping")?;
 
             let run_info = RunInfo::new(&*host, &*runner, &payload_mapping, &run_id);
             let run_script = runner.create_run_script(&run_info);
