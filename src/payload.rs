@@ -87,8 +87,8 @@ pub fn build_payload_mapping(
     for ignore_id in ignore_revisions.iter() {
         if !payload_mapping_config
             .code
-            .iter()
-            .any(|x| x.id == *ignore_id)
+            .keys()
+            .any(|code_source_id| *code_source_id == *ignore_id)
         {
             return Err(anyhow!(
                 "cannot ignore revision of id `{ignore_id}', not found in code mappings",
@@ -123,12 +123,12 @@ pub fn build_payload_mapping(
     let code_mappings: Vec<CodeMapping> = payload_mapping_config
         .code
         .iter()
-        .map(|code_mapping_config| {
+        .map(|(code_source_id, code_mapping_config)| {
             assert!(code_mapping_config.target.is_relative());
 
             let source = if ignore_revisions
                 .iter()
-                .find(|id| *id == &code_mapping_config.id)
+                .find(|id| **id == *code_source_id)
                 .is_some()
             {
                 let mut copy_excludes = read_excludes_from_gitignore()
@@ -156,7 +156,7 @@ pub fn build_payload_mapping(
             };
 
             Ok(CodeMapping {
-                id: code_mapping_config.id.clone(),
+                id: code_source_id.clone(),
                 source,
                 target_path: code_mapping_config.target.clone(),
             })

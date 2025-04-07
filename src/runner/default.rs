@@ -31,8 +31,8 @@ impl Runner for DefaultRunner {
         let context = build_template_context(run_info);
 
         // load file as string
-        let run_template_content = std::fs::read_to_string("run.sh.j2")
-            .expect("couldn't find run.sh.j2 in current directory");
+        let run_template_content = std::fs::read_to_string(".sparrow/run.sh.j2")
+            .expect("couldn't find .sparrow/run.sh.j2 in current directory");
 
         let mut env = minijinja::Environment::new();
         env.add_template("run", run_template_content.as_str())

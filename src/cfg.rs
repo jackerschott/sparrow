@@ -29,7 +29,6 @@ pub struct RemoteCodeSourceConfig {
 
 #[derive(Deserialize)]
 pub struct CodeMappingConfig {
-    pub id: String,
     pub local: LocalCodeSourceConfig,
     pub remote: RemoteCodeSourceConfig,
     pub target: PathBuf,
@@ -50,7 +49,7 @@ pub struct AuxiliaryMappingConfig {
 
 #[derive(Deserialize)]
 pub struct PayloadMappingConfig {
-    pub code: Vec<CodeMappingConfig>,
+    pub code: HashMap<String, CodeMappingConfig>,
     pub config: ConfigSourceConfig,
     pub auxiliary: Option<Vec<AuxiliaryMappingConfig>>,
 }

@@ -29,12 +29,14 @@
 //! Note that you might need to add ~/.cargo/bin to your PATH in bashrc/zshrc/config.fish, before
 //! being able to execute `sparrow`.
 //!
-//! Next we need to create a `run.yaml` file that contains everything sparrow needs to now about
-//! your setup, i.e. mostly your code and the cluster you want to run on.
-//! Consult the documentation of the [`cfg`] module for details on how to write this file.
+//! Next we need to create `.sparrow/config.yaml` and `.sparrow/private.yaml` files that contains
+//! everything sparrow needs to now about your setup, i.e. mostly your code and the cluster you want to run on.
+//! Consult the documentation of the [`cfg`] module for details on how to write this file and note
+//! that the two files get merged into one configuration, where `.sparrow/private.yaml` has
+//! priority.
 //!
 //! Now we only need to define the command we want sparrow to run our code with.
-//! This is done by writing a run.sh.j2 file, which is a bash script template that uses the [jinja
+//! This is done by writing a .sparrow/run.sh.j2 file, which is a bash script template that uses the [jinja
 //! specification](https://jinja.palletsprojects.com/en/stable/).
 //! A common example using snakemake would be
 //!
@@ -65,18 +67,19 @@
 //! These expression allow for some logic with a python-like syntax, like if-statements and loops.
 //! The variables that jinja uses are defined and documented by sparrow in the [`RunInfo`] struct.
 //!
-//! To launch an experiment after both `run.yaml` and `run.sh.j2` are created, we can run
+//! To launch an experiment after `.sparrow/config.yaml`, `.sparrow/private.yaml` and `.sparrow/run.sh.j2`
+//! are created, we can run
 //!
 //! ```shell
 //! sparrow run --run-name my_experiment
 //! ```
 //!
-//! This will simply launch the command we defined in `run.sh.j2` on our local machine in a
-//! temporary run directory and point the command to the output directory we defined in `run.yaml`
-//! under `<run-group>/my_experiment` (where the run group is also defined in `run.yaml`).
+//! This will simply launch the command we defined in `.sparrow/run.sh.j2` on our local machine in a
+//! temporary run directory and point the command to the output directory we defined in the
+//! configuration files under `<run-group>/my_experiment` (where the run group is also defined in the config).
 //!
 //! If we want to launch the experiment on a remote host instead, we simply specify the id of the
-//! remote host, as specified in `run.yaml`
+//! remote host, as specified in the configuration
 //!
 //! ```shell
 //! sparrow run --host <host-id> --run-name my_experiment
@@ -145,7 +148,8 @@ fn main() -> Result<()> {
         .as_utf8()
         .join("run");
     let config: GlobalConfig = Config::builder()
-        .add_source(File::new("run", FileFormat::Yaml))
+        .add_source(File::new(".sparrow/config", FileFormat::Yaml))
+        .add_source(File::new(".sparrow/private", FileFormat::Yaml))
         .build()
         .unwrap_or_else(|err| {
             eprintln!("could not build configuration: {}", err);
