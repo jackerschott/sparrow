@@ -19,6 +19,7 @@ pub struct LocalCodeSourceConfig {
     pub path: PathBuf,
     pub gitignore_exclude_additions: Option<Vec<String>>,
     pub gitignore_exclude_subtractions: Option<Vec<String>>,
+    pub no_config_exclude: bool
 }
 
 #[derive(Deserialize)]

@@ -107,18 +107,20 @@ pub fn build_payload_mapping(
         }
     }
 
+    if payload_mapping_config.config.dir.is_absolute() {
+        return Err(anyhow!(
+            "payload.config.dir is required to be relative, but got `{config_dir}` instead",
+            config_dir = payload_mapping_config.config.dir
+        ));
+    }
+
     let config_dir_override_path = config_dir_override_path.map(|x| {
         x.is_relative()
             .then_some(config_base_dir.join(x))
             .unwrap_or(x.to_owned())
     });
-    let config_dir_from_config = payload_mapping_config
-        .config
-        .dir
-        .is_relative()
-        .then_some(config_base_dir.join(payload_mapping_config.config.dir.clone()))
-        .unwrap_or(payload_mapping_config.config.dir.clone());
-    let config_dir_path = config_dir_override_path.unwrap_or(config_dir_from_config);
+    let config_dir_path = config_dir_override_path
+        .unwrap_or(config_base_dir.join(payload_mapping_config.config.dir.clone()));
 
     let code_mappings: Vec<CodeMapping> = payload_mapping_config
         .code
@@ -131,8 +133,25 @@ pub fn build_payload_mapping(
                 .find(|id| **id == *code_source_id)
                 .is_some()
             {
-                let mut copy_excludes = read_excludes_from_gitignore()
-                    .context("failed to add excludes from gitignore")?;
+                // we always exclude the git directory, since this is never needed for runs
+                let mut copy_excludes = vec![String::from("/.git/")];
+
+                if !code_mapping_config.local.no_config_exclude {
+                    copy_excludes.push(format!("/{}/", payload_mapping_config.config.dir));
+                } else {
+                    println!(
+                        "warning: setting payload.code.{code_source_id}.local.no_config_exclude to true \
+                        will be deprecated in future versions of sparrow, since it allows to copy the default \
+                        config directory to the run directory; however the config might differ from the default \
+                        directory, e.g. due to a config review, and thus the default config directory should never \
+                        be used"
+                    );
+                }
+
+                copy_excludes.extend(
+                    read_excludes_from_gitignore()
+                        .context("failed to add excludes from gitignore")?,
+                );
                 if let Some(exclude_additions) =
                     &code_mapping_config.local.gitignore_exclude_additions
                 {
