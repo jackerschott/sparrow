@@ -85,7 +85,7 @@ pub trait Host {
         copy_directory(
             &config_mapping.dir_path,
             &review_dir.utf8_path(),
-            SyncOptions::default().copy_contents(),
+            SyncOptions::default().copy_contents().resolve_symlinks(),
         );
 
         if review {
@@ -254,21 +254,30 @@ pub fn build_host(
     if host_id == "local" {
         Ok(Box::new(LocalHost::new(
             local_config.run_output_base_dir.as_path(),
-            local_config.script_run_command_template.clone().unwrap_or(String::from("bash {}")),
+            local_config
+                .script_run_command_template
+                .clone()
+                .unwrap_or(String::from("bash {}")),
         )))
     } else if remote_configs.contains_key(host_id) {
         Ok(Box::new(SlurmClusterHost::new(
             &host_id,
             remote_configs[host_id].hostname.as_str(),
-            remote_configs[host_id].script_run_command_template.clone().unwrap_or(String::from("bash {}")),
+            remote_configs[host_id]
+                .script_run_command_template
+                .clone()
+                .unwrap_or(String::from("bash {}")),
             remote_configs[host_id].run_output_base_dir.as_path(),
             remote_configs[host_id].temporary_dir.as_path(),
             QuickRunPreparationOptions {
                 slurm_account: remote_configs[host_id].quick_run.account.clone(),
                 slurm_service_quality: remote_configs[host_id].quick_run.service_quality.clone(),
-                node_local_storage_path: remote_configs[host_id].quick_run.node_local_storage_path.clone(),
+                node_local_storage_path: remote_configs[host_id]
+                    .quick_run
+                    .node_local_storage_path
+                    .clone(),
             },
-            configure_for_quick_run
+            configure_for_quick_run,
         )))
     } else {
         Err(format!("Unknown host id: {}", host_id))
@@ -320,7 +329,8 @@ fn review_config(dir_path: &Path, entrypoint_path: &Path) {
         cmd.arg(entry.path());
     }
 
-    cmd.status().expect(&format!("expected {cmd:?} to run successfully"));
+    cmd.status()
+        .expect(&format!("expected {cmd:?} to run successfully"));
 }
 
 fn unpack_revision(url: &Url, git_revision: &str, destination_path: &Path, ssh_key_path: &Path) {

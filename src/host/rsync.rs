@@ -29,6 +29,7 @@ pub struct SyncOptions {
     infos: Vec<String>,
     copy_contents: bool,
     progress: bool,
+    resolve_symlinks: bool,
 }
 impl SyncOptions {
     pub fn default() -> SyncOptions {
@@ -40,6 +41,7 @@ impl SyncOptions {
             infos: Vec::new(),
             copy_contents: false,
             progress: false,
+            resolve_symlinks: false,
         }
     }
 
@@ -87,6 +89,11 @@ impl SyncOptions {
         self.progress = true;
         self
     }
+
+    pub fn resolve_symlinks(mut self) -> SyncOptions {
+        self.resolve_symlinks = true;
+        self
+    }
 }
 
 fn ensure_trailing_slash(path: &Path) -> PathBuf {
@@ -116,6 +123,10 @@ pub fn rsync<'a>(payload: SyncPayload<'a>, options: SyncOptions) -> std::io::Res
 
     if options.progress {
         cmd.arg("--progress");
+    }
+
+    if options.resolve_symlinks {
+        cmd.arg("--copy-links");
     }
 
     if options.infos.len() > 0 {
