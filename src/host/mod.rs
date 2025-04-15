@@ -319,15 +319,10 @@ fn review_config(dir_path: &Path, entrypoint_path: &Path) {
     let editor_name = std::env::var("EDITOR").expect("expected EDITOR variable to be set");
     let mut cmd = std::process::Command::new(terminal_name);
 
-    cmd.arg("-e").arg(editor_name).arg(entrypoint_path.as_str());
-    for entry in walkdir::WalkDir::new(dir_path) {
-        let entry = entry.expect("expected config dir walking to work");
-        if entry.path() == entrypoint_path {
-            continue;
-        }
-
-        cmd.arg(entry.path());
-    }
+    let cmd = cmd.arg("-e")
+        .arg("bash")
+        .arg("-c")
+        .arg(format!("cd {dir_path} && {editor_name} {entrypoint_path}"));
 
     cmd.status()
         .expect(&format!("expected {cmd:?} to run successfully"));
