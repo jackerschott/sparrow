@@ -111,7 +111,7 @@ pub trait Host {
         self.put(
             review_dir.utf8_path(),
             &self.config_dir_destination_path(run_id),
-            SyncOptions::default().copy_contents(),
+            SyncOptions::default().copy_contents().delete(),
         );
 
         self.put(
