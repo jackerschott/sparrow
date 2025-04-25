@@ -125,15 +125,13 @@ mod run;
 mod utils;
 
 use crate::utils::select_interactively;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use cfg::*;
 use clap::{CommandFactory, Parser};
 use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
-use host::{build_host, QuickRunPrepOptions, RunID};
-use payload::build_payload_mapping;
-use run::{build_runner, RunInfo};
-use utils::AsUtf8Path;
+use host::{build_host, QuickRunPrepOptions};
+use run::run;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -143,10 +141,6 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let config_path = std::env::current_dir()
-        .expect("expected current directory to accessible")
-        .as_utf8()
-        .join("run");
     let config: GlobalConfig = Config::builder()
         .add_source(File::new(".sparrow/config", FileFormat::Yaml))
         .add_source(File::new(".sparrow/private", FileFormat::Yaml))
@@ -173,89 +167,20 @@ fn main() -> Result<()> {
             no_config_review,
             remainder,
             only_print_run_script,
-        }) => {
-            let run_group = run_group.unwrap_or(config.run_group);
-            let run_id = RunID::new(&run_name, &run_group);
-
-            println!("Connect to host...");
-            let host = build_host(
-                &host,
-                &config.local_host,
-                &config.remote_hosts,
-                enforce_quick,
-            )
-            .unwrap_or_else(|err| {
-                eprintln!("error while building host: {}", err);
-                std::process::exit(1);
-            });
-
-            let runner = build_runner(&remainder, config.runner);
-
-            let config_dir = use_previous_config
-                .then_some(host.config_dir_destination_path(&RunID::new(run_name, run_group)))
-                .or(config_dir);
-            let payload_mapping = build_payload_mapping(
-                &config.payload,
-                config_dir.as_deref(),
-                &ignore_revisions,
-                config_path
-                    .parent()
-                    .expect("expected config path to have a parent"),
-            ).context("failed to build payload mapping")?;
-
-            let run_info = RunInfo::new(&*host, &*runner, &payload_mapping, &run_id);
-            let run_script = runner.create_run_script(&run_info);
-            if only_print_run_script {
-                print_run_script(run_script);
-                return Ok(());
-            }
-
-            println!(
-                "Copying config to run directory from `{}'...",
-                payload_mapping.config_source.dir_path
-            );
-            host.prepare_config_directory(
-                &payload_mapping.config_source,
-                &run_id,
-                payload_mapping
-                    .code_mappings
-                    .iter()
-                    .filter_map(|code_mapping| {
-                        code_mapping
-                            .source
-                            .git_revision()
-                            .map(|revision| (code_mapping.id.clone(), revision.clone()))
-                    })
-                    .collect(),
-                !no_config_review,
-            );
-
-            println!("Copying code to run directory from...");
-            payload_mapping
-                .code_mappings
-                .iter()
-                .for_each(|code_mapping| {
-                    println!(
-                        "    {}: {}",
-                        code_mapping.id,
-                        match code_mapping.source {
-                            payload::CodeSource::Local { ref path, .. } => format!("{}", path),
-                            payload::CodeSource::Remote {
-                                ref url,
-                                ref git_revision,
-                            } => format!("{}@{}", url, git_revision),
-                        }
-                    );
-                });
-            let run_dir = host.prepare_run_directory(
-                &payload_mapping.code_mappings,
-                &payload_mapping.auxiliary_mappings,
-                run_script,
-            );
-
-            println!("Execute run...");
-            runner.run(&*host, &run_dir, &run_id);
-        }
+        }) => run(
+            run_name,
+            run_group,
+            config_dir,
+            use_previous_config,
+            ignore_revisions,
+            host,
+            enforce_quick,
+            no_config_review,
+            remainder,
+            only_print_run_script,
+            config,
+        )
+        .context("run failed"),
         Some(RunnerCommandConfig::RemotePrepareQuickRun {
             host: host_id,
             time,
@@ -269,9 +194,11 @@ fn main() -> Result<()> {
 
             let host = build_host(&host_id, &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
-            if host.quick_run_is_prepared()
-                .context(format!("failed to check for the quick preparation of {}", host.id()))? {
-                println!("quick run is already prepared for {host}", host=host.id());
+            if host.quick_run_is_prepared().context(format!(
+                "failed to check for the quick preparation of {}",
+                host.id()
+            ))? {
+                println!("quick run is already prepared for {host}", host = host.id());
                 return Ok(());
             }
 
@@ -281,7 +208,8 @@ fn main() -> Result<()> {
                 gpu_count,
                 constraint,
                 &config.remote_hosts[&host_id].quick_run,
-            )).context(format!("failed to prepare {} for quick runs", host.id()))?;
+            ))
+            .context(format!("failed to prepare {} for quick runs", host.id()))
         }
         Some(RunnerCommandConfig::RemoteClearQuickRun { host }) => {
             if host == "local" {
@@ -292,6 +220,8 @@ fn main() -> Result<()> {
             let host = build_host(&host, &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
             host.clear_preparation();
+
+            Ok(())
         }
         Some(RunnerCommandConfig::ListRuns { host, running }) => {
             let host = build_host(&host, &config.local_host, &config.remote_hosts, false)
@@ -306,11 +236,15 @@ fn main() -> Result<()> {
             for run_id in run_ids {
                 println!("{}", run_id);
             }
+
+            Ok(())
         }
         Some(RunnerCommandConfig::RunAttach { host, quick }) => {
             let host = build_host(&host, &config.local_host, &config.remote_hosts, quick)
                 .expect("expected host building to always succeed");
             host.attach(select_interactively(&host.running_runs()));
+
+            Ok(())
         }
         Some(RunnerCommandConfig::RunOutputSync {
             host,
@@ -361,6 +295,8 @@ fn main() -> Result<()> {
             };
 
             host::local::show_result(&run_id, &config.local_host.run_output_base_dir, result_path);
+
+            Ok(())
         }
         Some(RunnerCommandConfig::RunLog {
             host,
@@ -374,6 +310,8 @@ fn main() -> Result<()> {
             let log_file_path = select_interactively(&host.log_file_paths(&run_id)).clone();
             println!("------ {run_id}, {log_file_path} ------");
             host.tail_log(&run_id, &log_file_path, follow);
+
+            Ok(())
         }
         Some(RunnerCommandConfig::ShowResults {}) => {
             let host = build_host("local", &config.local_host, &config.remote_hosts, false)
@@ -398,20 +336,9 @@ fn main() -> Result<()> {
             };
 
             host::local::show_result(&run_id, &config.local_host.run_output_base_dir, result_path);
+
+            Ok(())
         }
-        None => {
-            eprintln!("no command specified");
-            std::process::exit(1);
-        }
+        None => bail!("no command specified, use --help to see available commands")
     }
-
-    Ok(())
-}
-
-fn print_run_script(run_script: tempfile::NamedTempFile) {
-    println!("------ run_script start ------");
-    std::fs::copy(run_script.path(), "/dev/stdout")
-        .expect("expected copying of run script to succeed");
-    println!();
-    println!("------- run_script end -------");
 }

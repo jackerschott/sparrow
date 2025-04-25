@@ -9,7 +9,7 @@ use std::io::Write;
 use super::utils::Utf8Path;
 use crate::cfg::{LocalHostConfig, QuickRunConfig, RemoteHostConfig};
 use crate::payload::{AuxiliaryMapping, CodeMapping, CodeSource, ConfigSource};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 use git2::Repository;
 use local::LocalHost;
@@ -246,9 +246,9 @@ pub fn build_host(
     local_config: &LocalHostConfig,
     remote_configs: &HashMap<String, RemoteHostConfig>,
     configure_for_quick_run: bool,
-) -> Result<Box<dyn Host>, String> {
+) -> Result<Box<dyn Host>> {
     if host_id == "local" && configure_for_quick_run {
-        return Err("Cannot use --enforce-quick with the local host".to_owned());
+        bail!("Cannot use --enforce-quick with the local host");
     }
 
     if host_id == "local" {
@@ -280,7 +280,7 @@ pub fn build_host(
             configure_for_quick_run,
         )))
     } else {
-        Err(format!("Unknown host id: {}", host_id))
+        bail!("Host id `{host_id}` not found in remote hosts configuration");
     }
 }
 

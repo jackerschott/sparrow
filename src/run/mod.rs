@@ -1,6 +1,8 @@
 use crate::cfg::RunnerConfig;
-use crate::host::{Host, HostInfo, RunDirectory, RunID};
-use crate::payload::{PayloadInfo, PayloadMapping};
+use crate::host::{build_host, Host, HostInfo, RunDirectory, RunID};
+use crate::payload::{build_payload_mapping, CodeSource, PayloadInfo, PayloadMapping};
+use crate::GlobalConfig;
+use anyhow::{Context, Result};
 use camino::Utf8PathBuf as PathBuf;
 use default::DefaultRunner;
 use std::collections::HashMap;
@@ -81,4 +83,100 @@ impl RunInfo {
             output_path: run_id.path(host.output_base_dir_path()),
         }
     }
+}
+
+fn print_run_script(run_script: tempfile::NamedTempFile) {
+    println!("------ run_script start ------");
+    std::fs::copy(run_script.path(), "/dev/stdout")
+        .expect("expected copying of run script to succeed");
+    println!();
+    println!("------- run_script end -------");
+}
+pub fn run(
+    run_name: String,
+    run_group: Option<String>,
+    config_dir: Option<PathBuf>,
+    use_previous_config: bool,
+    ignore_revisions: Vec<String>,
+    host: String,
+    enforce_quick: bool,
+    no_config_review: bool,
+    remainder: Vec<String>,
+    only_print_run_script: bool,
+    config: GlobalConfig,
+) -> Result<()> {
+    let run_group = run_group.unwrap_or(config.run_group);
+    let run_id = RunID::new(&run_name, &run_group);
+
+    println!("Connect to host...");
+    let host = build_host(
+        &host,
+        &config.local_host,
+        &config.remote_hosts,
+        enforce_quick,
+    ).context(format!("failed to build {host} as host"))?;
+
+    let runner = build_runner(&remainder, config.runner);
+
+    let config_dir = use_previous_config
+        .then_some(host.config_dir_destination_path(&RunID::new(run_name, run_group)))
+        .or(config_dir);
+    let payload_mapping = build_payload_mapping(
+        &config.payload,
+        config_dir.as_deref(),
+        &ignore_revisions,
+    ).context("failed to build payload mapping")?;
+
+    let run_info = RunInfo::new(&*host, &*runner, &payload_mapping, &run_id);
+    let run_script = runner.create_run_script(&run_info);
+    if only_print_run_script {
+        print_run_script(run_script);
+        return Ok(());
+    }
+
+    println!(
+        "Copying config to run directory from `{}'...",
+        payload_mapping.config_source.dir_path
+    );
+    host.prepare_config_directory(
+        &payload_mapping.config_source,
+        &run_id,
+        payload_mapping
+            .code_mappings
+            .iter()
+            .filter_map(|code_mapping| {
+                code_mapping
+                    .source
+                    .git_revision()
+                    .map(|revision| (code_mapping.id.clone(), revision.clone()))
+            })
+            .collect(),
+        !no_config_review,
+    );
+
+    println!("Copying code to run directory from...");
+    payload_mapping
+        .code_mappings
+        .iter()
+        .for_each(|code_mapping| {
+            println!(
+                "    {}: {}",
+                code_mapping.id,
+                match code_mapping.source {
+                    CodeSource::Local { ref path, .. } => format!("{}", path),
+                    CodeSource::Remote {
+                        ref url,
+                        ref git_revision,
+                    } => format!("{}@{}", url, git_revision),
+                }
+            );
+        });
+    let run_dir = host.prepare_run_directory(
+        &payload_mapping.code_mappings,
+        &payload_mapping.auxiliary_mappings,
+        run_script,
+    );
+
+    println!("Execute run...");
+    Ok(runner.run(&*host, &run_dir, &run_id))
 }

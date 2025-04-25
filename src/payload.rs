@@ -80,7 +80,6 @@ pub fn build_payload_mapping(
     payload_mapping_config: &PayloadMappingConfig,
     config_dir_override_path: Option<&Path>,
     ignore_revisions: &Vec<String>,
-    config_base_dir: &Path,
 ) -> Result<PayloadMapping> {
     assert!(payload_mapping_config.config.entrypoint.is_relative());
 
@@ -114,13 +113,10 @@ pub fn build_payload_mapping(
         ));
     }
 
-    let config_dir_override_path = config_dir_override_path.map(|x| {
-        x.is_relative()
-            .then_some(config_base_dir.join(x))
-            .unwrap_or(x.to_owned())
-    });
-    let config_dir_path = config_dir_override_path
-        .unwrap_or(config_base_dir.join(payload_mapping_config.config.dir.clone()));
+    let config_dir_path = config_dir_override_path.unwrap_or(&payload_mapping_config.config.dir);
+    let config_dir_path = camino::absolute_utf8(config_dir_path).context(format!(
+        "failed to convert relative config override {config_dir_path} to an absolute path"
+    ))?;
 
     let code_mappings: Vec<CodeMapping> = payload_mapping_config
         .code
