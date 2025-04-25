@@ -149,7 +149,7 @@ pub fn build_payload_mapping(
                 }
 
                 copy_excludes.extend(
-                    read_excludes_from_gitignore()
+                    read_excludes_from_gitignore(&code_mapping_config.local.path)
                         .context("failed to add excludes from gitignore")?,
                 );
                 if let Some(exclude_additions) =
@@ -204,8 +204,8 @@ pub fn build_payload_mapping(
     })
 }
 
-fn read_excludes_from_gitignore() -> Result<Vec<String>> {
-    Ok(std::fs::read_to_string(".gitignore")
+fn read_excludes_from_gitignore(repository_path: &Path) -> Result<Vec<String>> {
+    Ok(std::fs::read_to_string(repository_path.join(".gitignore"))
         .context("failed to open `.gitignore', are you in the project root?")?
         .lines()
         .filter(|line| !line.starts_with("#") && !line.is_empty())
