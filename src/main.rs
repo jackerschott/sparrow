@@ -121,7 +121,7 @@
 mod cfg;
 mod host;
 mod payload;
-mod runner;
+mod run;
 mod utils;
 
 use crate::utils::select_interactively;
@@ -132,7 +132,7 @@ use clap_complete::{generate, Shell::Fish};
 use config::{Config, File, FileFormat};
 use host::{build_host, QuickRunPrepOptions, RunID};
 use payload::build_payload_mapping;
-use runner::{build_runner, RunInfo};
+use run::{build_runner, RunInfo};
 use utils::AsUtf8Path;
 
 fn main() -> Result<()> {
