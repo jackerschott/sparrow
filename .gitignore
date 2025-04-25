@@ -10,3 +10,4 @@
 /.direnv
 /.envrc
 /.pre-commit-config.yaml
+/vendor
