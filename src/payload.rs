@@ -205,10 +205,18 @@ pub fn build_payload_mapping(
 }
 
 fn read_excludes_from_gitignore(repository_path: &Path) -> Result<Vec<String>> {
-    Ok(std::fs::read_to_string(repository_path.join(".gitignore"))
-        .context("failed to open `.gitignore', are you in the project root?")?
-        .lines()
-        .filter(|line| !line.starts_with("#") && !line.is_empty())
-        .map(String::from)
-        .collect())
+    let read_ignores = |path: &Path| -> Result<Vec<_>> {
+        Ok(std::fs::read_to_string(repository_path.join(path))
+            .context("failed to open `.gitignore', are you in the project root?")?
+            .lines()
+            .filter(|line| !line.starts_with("#") && !line.is_empty())
+            .map(String::from)
+            .collect())
+    };
+
+    Ok(Iterator::chain(
+        read_ignores(&Path::new(".gitignore")).context("")?.into_iter(),
+        read_ignores(&Path::new(".git/info/exclude")).context("")?.into_iter(),
+    )
+    .collect())
 }
