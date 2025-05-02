@@ -205,9 +205,8 @@ pub fn build_payload_mapping(
 }
 
 fn read_excludes_from_gitignore(repository_path: &Path) -> Result<Vec<String>> {
-    let read_ignores = |path: &Path| -> Result<Vec<_>> {
-        Ok(std::fs::read_to_string(repository_path.join(path))
-            .context("failed to open `.gitignore', are you in the project root?")?
+    let read_ignores = |path: &Path| -> Result<Vec<_>, std::io::Error> {
+        Ok(std::fs::read_to_string(repository_path.join(path))?
             .lines()
             .filter(|line| !line.starts_with("#") && !line.is_empty())
             .map(String::from)
@@ -215,8 +214,10 @@ fn read_excludes_from_gitignore(repository_path: &Path) -> Result<Vec<String>> {
     };
 
     Ok(Iterator::chain(
-        read_ignores(&Path::new(".gitignore")).context("")?.into_iter(),
-        read_ignores(&Path::new(".git/info/exclude")).context("")?.into_iter(),
+        read_ignores(&Path::new(".gitignore")).context(format!("failed to open {repository_path}/.gitignore"))?.into_iter(),
+        if std::fs::exists(".git/info/exclude").context(format!("failed to check for existence of `{repository_path}.git/info/exclude`"))? {
+            read_ignores(&Path::new(".git/info/exclude")).context(format!("failed to open {repository_path}/.git/info/exclude"))?
+        } else { vec![] }.into_iter(),
     )
     .collect())
 }
