@@ -142,7 +142,7 @@ pub trait Host {
     fn quick_run_is_prepared(&self) -> Result<bool>;
     fn clear_preparation(&self);
 
-    fn runs(&self) -> Vec<RunID>;
+    fn runs(&self) -> Result<Vec<RunID>>;
     fn running_runs(&self) -> Vec<RunID>;
     fn log_file_paths(&self, run_id: &RunID) -> Vec<PathBuf>;
     fn attach(&self, run_id: &RunID);

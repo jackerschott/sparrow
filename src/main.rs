@@ -231,6 +231,7 @@ fn main() -> Result<()> {
                 host.running_runs()
             } else {
                 host.runs()
+                    .context(format!("failed to obtain runs from {}", host.id()))?
             };
 
             for run_id in run_ids {
@@ -258,9 +259,14 @@ fn main() -> Result<()> {
             let host = build_host(&host, &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
 
-            let run_id = select_interactively(&host.runs(), "run: ")
-                .context("failed to select a run to synchronize")?
-                .clone();
+            let run_id = select_interactively(
+                &host
+                    .runs()
+                    .context(format!("failed to obtain runs from {}", host.id()))?,
+                "run: ",
+            )
+            .context("failed to select a run to synchronize")?
+            .clone();
             let sync_result = host.sync(
                 &run_id,
                 &config.local_host.run_output_base_dir,
@@ -327,9 +333,14 @@ fn main() -> Result<()> {
             let host = build_host("local", &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
 
-            let run_id = select_interactively(&host.runs(), "run: ")
-                .context("failed to select a run to select a result from")?
-                .clone();
+            let run_id = select_interactively(
+                &host
+                    .runs()
+                    .context(format!("failed to obtain runs from {}", host.id()))?,
+                "run: ",
+            )
+            .context("failed to select a run to select a result from")?
+            .clone();
 
             let result_path = match config.run_output.results.len() {
                 0 => {

@@ -287,7 +287,6 @@ impl SlurmClusterHost {
             format!("--gpus={gpu_count}"),
         ]);
 
-
         return options;
     }
 }
@@ -374,27 +373,26 @@ impl Host for SlurmClusterHost {
         self.deallocate_quick_run_node()
     }
 
-    fn runs(&self) -> Vec<RunID> {
-        let find_output = self
-            .connection
-            .command("find")
+    fn runs(&self) -> Result<Vec<RunID>> {
+        let mut find_command = self.connection.command("find");
+        find_command
             .arg(self.output_base_dir_path.as_str())
             .arg("-mindepth")
             .arg("2")
             .arg("-maxdepth")
             .arg("2")
             .arg("-type")
-            .arg("d")
-            .output()
-            .expect("expected run output find to succeed");
+            .arg("d");
+        let find_command_string = format!("{find_command:?}");
 
-        if !find_output.status.success() {
-            return Vec::new();
-        }
+        let find_output = find_command
+            .stderr(openssh::Stdio::inherit())
+            .output()
+            .context(format!("failed to run `{find_command_string}`"))?;
 
         let find_output = String::from_utf8(find_output.stdout).unwrap();
 
-        find_output
+        Ok(find_output
             .lines()
             .map(|line| Path::new(line))
             .map(|path| {
@@ -402,7 +400,7 @@ impl Host for SlurmClusterHost {
                 let group = path.parent().unwrap().file_name().unwrap();
                 RunID::new(name, group)
             })
-            .collect()
+            .collect())
     }
     fn running_runs(&self) -> Vec<RunID> {
         let tmux_output = self

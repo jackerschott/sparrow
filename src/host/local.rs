@@ -1,7 +1,7 @@
 use super::rsync::{copy_directory, SyncOptions};
 use super::{Host, QuickRunPrepOptions, RunDirectory, RunID, RunOutputSyncOptions};
 use crate::utils::{AsUtf8Path, Utf8Str};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use camino::{Utf8Path as Path, Utf8PathBuf as PathBuf};
 
 pub struct LocalHost {
@@ -64,28 +64,28 @@ impl Host for LocalHost {
     }
     fn clear_preparation(&self) {}
 
-    fn runs(&self) -> Vec<RunID> {
+    fn runs(&self) -> Result<Vec<RunID>> {
         if !self.output_base_dir_path.as_path().exists() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
 
         let mut ids = Vec::new();
         for group_dir in std::fs::read_dir(self.output_base_dir_path.as_path())
-            .expect("expected read of run output base dir to succeed")
+            .context(format!("failed to read {}", self.output_base_dir_path))?
         {
-            let group_dir = group_dir.expect("expected read of run output base dir to succeed");
+            let group_dir = group_dir.context(format!("failed to read {}", self.output_base_dir_path))?;
             for name_dir in std::fs::read_dir(group_dir.path())
                 .expect("expected read of run output group dir to succeed")
             {
-                let name_dir = name_dir.expect("expected read of run output group dir to succeed");
+                let name_dir = name_dir.context(format!("failed to read {}", self.output_base_dir_path))?;
 
                 assert!(group_dir
                     .file_type()
-                    .expect("expected file_type to be accessible")
+                    .context(format!("failed to obtain file type for {}", group_dir.path().as_utf8()))?
                     .is_dir());
                 assert!(name_dir
                     .file_type()
-                    .expect("expected file_type to be accessible")
+                    .context(format!("failed to obtain file type for {}", name_dir.path().as_utf8()))?
                     .is_dir());
 
                 ids.push(RunID::new(
@@ -95,7 +95,7 @@ impl Host for LocalHost {
             }
         }
 
-        return ids;
+        Ok(ids)
     }
     fn running_runs(&self) -> Vec<RunID> {
         unimplemented!();

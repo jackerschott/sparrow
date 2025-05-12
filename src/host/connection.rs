@@ -1,3 +1,5 @@
+use std::iter;
+
 use super::rsync::{rsync, SyncOptions, SyncPayload};
 use camino::Utf8Path as Path;
 use openssh::{Session, SessionBuilder};
@@ -55,10 +57,7 @@ impl Connection {
     }
 
     pub fn command(&self, program: &str) -> Command {
-        Command {
-            async_runtime: &self.async_runtime,
-            command: self.session.command(program),
-        }
+        Command::from_session(self, program)
     }
 
     pub fn block_on<F: std::future::Future>(&self, future: F) -> F::Output {
@@ -69,20 +68,34 @@ impl Connection {
 pub struct Command<'c> {
     async_runtime: &'c tokio::runtime::Runtime,
     pub command: openssh::OwningCommand<&'c openssh::Session>,
+    program: String,
+    args: Vec<String>,
 }
 
 impl<'c> Command<'c> {
+    pub fn from_session(connection: &'c Connection, program: &str) -> Self {
+        Self {
+            async_runtime: &connection.async_runtime,
+            command: connection.session.command(program),
+            program: program.to_owned(),
+            args: Vec::new(),
+        }
+    }
+
     pub fn arg<A: AsRef<str>>(&mut self, arg: A) -> &mut Self {
+        self.args.push(arg.as_ref().to_owned());
         self.command.arg(arg);
         self
     }
 
     pub fn args<I, A>(&mut self, args: I) -> &mut Self
     where
-        I: IntoIterator<Item = A>,
+        I: IntoIterator<Item = A> + Clone,
         A: AsRef<str>,
     {
-        self.command.args(args);
+        self.command.args(args.clone());
+        self.args
+            .extend(args.into_iter().map(|arg| arg.as_ref().to_owned()));
         self
     }
 
@@ -117,6 +130,12 @@ impl<'c> Command<'c> {
 
 impl std::fmt::Debug for Command<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.command)
+        let quote = |arg| format!("\"{arg}\"");
+        let command = Iterator::chain(
+            iter::once(&self.program).map(quote),
+            self.args.iter().map(quote),
+        ).collect::<Vec<_>>().join(" ");
+
+        write!(f, "{command}")
     }
 }

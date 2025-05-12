@@ -57,9 +57,6 @@ pub fn select_interactively<'d, D: std::fmt::Display>(
     prompt: &str,
 ) -> Result<&'d D> {
     let mut fzf_command = std::process::Command::new("fzf");
-
-    println!("options: {:?}", options.iter().map(|option| format!("{}", option)).collect::<Vec<_>>());
-
     fzf_command
         .arg("--prompt")
         .arg(prompt)
