@@ -242,7 +242,10 @@ fn main() -> Result<()> {
         Some(RunnerCommandConfig::RunAttach { host, quick }) => {
             let host = build_host(&host, &config.local_host, &config.remote_hosts, quick)
                 .expect("expected host building to always succeed");
-            host.attach(select_interactively(&host.running_runs()));
+            host.attach(
+                select_interactively(&host.running_runs(), "run: ")
+                    .context("failed to select a run to attach to")?,
+            );
 
             Ok(())
         }
@@ -255,7 +258,9 @@ fn main() -> Result<()> {
             let host = build_host(&host, &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
 
-            let run_id = select_interactively(&host.runs()).clone();
+            let run_id = select_interactively(&host.runs(), "run: ")
+                .context("failed to select a run to synchronize")?
+                .clone();
             let sync_result = host.sync(
                 &run_id,
                 &config.local_host.run_output_base_dir,
@@ -290,7 +295,8 @@ fn main() -> Result<()> {
                 (true, 1) => config.run_output.results.first().unwrap(),
                 (true, _) => {
                     assert!(config.run_output.results.len() > 1);
-                    select_interactively(&config.run_output.results)
+                    select_interactively(&config.run_output.results, "result: ")
+                        .context("failed to select a result to synchronize")?
                 }
             };
 
@@ -306,8 +312,12 @@ fn main() -> Result<()> {
             let host = build_host(&host, &config.local_host, &config.remote_hosts, quick_run)
                 .expect("expected host building to always succeed");
 
-            let run_id = select_interactively(&host.running_runs()).clone();
-            let log_file_path = select_interactively(&host.log_file_paths(&run_id)).clone();
+            let run_id = select_interactively(&host.running_runs(), "run: ")
+                .context("failed to select a run to select a log file from")?
+                .clone();
+            let log_file_path = select_interactively(&host.log_file_paths(&run_id), "log: ")
+                .context("failed to select a log file")?
+                .clone();
             println!("------ {run_id}, {log_file_path} ------");
             host.tail_log(&run_id, &log_file_path, follow);
 
@@ -317,7 +327,9 @@ fn main() -> Result<()> {
             let host = build_host("local", &config.local_host, &config.remote_hosts, false)
                 .expect("expected host building to always succeed");
 
-            let run_id = select_interactively(&host.runs()).clone();
+            let run_id = select_interactively(&host.runs(), "run: ")
+                .context("failed to select a run to select a result from")?
+                .clone();
 
             let result_path = match config.run_output.results.len() {
                 0 => {
@@ -331,7 +343,8 @@ fn main() -> Result<()> {
                 1 => config.run_output.results.first().unwrap(),
                 _ => {
                     assert!(config.run_output.results.len() > 1);
-                    select_interactively(&config.run_output.results)
+                    select_interactively(&config.run_output.results, "result: ")
+                        .context("failed to select a result to show")?
                 }
             };
 
@@ -339,6 +352,6 @@ fn main() -> Result<()> {
 
             Ok(())
         }
-        None => bail!("no command specified, use --help to see available commands")
+        None => bail!("no command specified, use --help to see available commands"),
     }
 }

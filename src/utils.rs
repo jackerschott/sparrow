@@ -1,3 +1,4 @@
+use anyhow::{bail, Context, Result};
 use camino::Utf8Path as Path;
 use std::io::Write;
 use tempfile::{NamedTempFile, TempDir};
@@ -51,41 +52,55 @@ impl Utf8Str for std::ffi::OsStr {
     }
 }
 
-pub fn select_interactively<D: std::fmt::Display>(options: &Vec<D>) -> &D {
-    let mut child = std::process::Command::new("rofi")
-        .arg("-dmenu")
+pub fn select_interactively<'d, D: std::fmt::Display>(
+    options: &'d Vec<D>,
+    prompt: &str,
+) -> Result<&'d D> {
+    let mut fzf_command = std::process::Command::new("fzf");
+
+    println!("options: {:?}", options.iter().map(|option| format!("{}", option)).collect::<Vec<_>>());
+
+    fzf_command
+        .arg("--prompt")
+        .arg(prompt)
         .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped());
+
+    let mut child = fzf_command
         .spawn()
-        .expect("expected rofi to start successfully");
+        .context(format!("failed to spawn interactive selection command `{fzf_command:?}`"))?;
 
     let options_input = options
         .iter()
-        .map(|x| x.to_string())
+        .map(|option| option.to_string())
         .collect::<Vec<_>>()
         .join("\n");
 
     child
         .stdin
         .as_mut()
-        .expect("expected stdin of rofi to be piped")
+        .expect("expected stdin of fzf to be piped before")
         .write_all(options_input.as_bytes())
-        .expect("expected write to stdin of rofi to work");
+        .context(format!("failed to write to stdin of interactive selection `{fzf_command:?}`"))?;
 
     let output = child
         .wait_with_output()
-        .expect("expected waiting for rofi output to work");
+        .context(format!("failed to wait for output of interactive selection `{fzf_command:?}`"))?;
     if !output.status.success() {
-        std::process::exit(1);
+        bail!("interactive selection failed to exit successfully, most likely because nothing was selected");
     }
 
-    let output = String::from_utf8(output.stdout).expect("expected rofi output to be valid utf8");
+    let output = String::from_utf8(output.stdout).context(format!(
+        "found non-valid utf8 in output of `{fzf_command:?}` "
+    ))?;
     let output = output.trim();
 
-    return options
-        .iter()
-        .find(|x| x.to_string() == output)
-        .expect("expected rofi output to be one of the options");
+    return Ok(
+        options
+            .iter()
+            .find(|x| x.to_string() == output)
+            .expect("expected rofi output to be one of the options"),
+    );
 }
 
 pub fn tmux_wrap(cmd: &str, session_name: &str) -> String {
