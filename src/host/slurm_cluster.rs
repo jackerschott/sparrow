@@ -1,4 +1,5 @@
 use super::connection::Connection;
+use super::local::LocalHost;
 use super::rsync::SyncOptions;
 use super::{Host, QuickRunPrepOptions, RunDirectory, RunID, RunOutputSyncOptions};
 use crate::utils::Utf8Path;
@@ -320,6 +321,17 @@ impl Host for SlurmClusterHost {
         );
         return RunDirectory::Remote(run_dir_path);
     }
+    fn download_config_dir(&self, local: &LocalHost, run_id: &RunID) -> Result<PathBuf> {
+        let destination_path = local.config_dir_destination_path(run_id);
+        local.create_dir_all(&destination_path);
+        self.connection.download(
+            &self.config_dir_destination_path(run_id),
+            &destination_path,
+            SyncOptions::default().copy_contents(),
+        );
+
+        Ok(destination_path)
+    }
 
     fn put(&self, local_path: &Path, host_path: &Path, options: SyncOptions) {
         self.connection.upload(local_path, host_path, options);
@@ -429,7 +441,7 @@ impl Host for SlurmClusterHost {
             .collect()
     }
     fn log_file_paths(&self, run_id: &RunID) -> Vec<PathBuf> {
-        let log_path = run_id.path(&self.output_base_dir_path).join("logs");
+        let log_path = run_id.path(&self.output_base_dir_path);
 
         let find_output = self
             .connection
@@ -459,13 +471,14 @@ impl Host for SlurmClusterHost {
             .collect()
     }
     fn attach(&self, run_id: &RunID) {
-        std::process::Command::new(std::env::var("SHELL").unwrap())
+        let err = std::process::Command::new(std::env::var("SHELL").unwrap())
             .arg("-c")
             .arg(&format!(
                 "ssh -tt {} 'exec tmux attach-session -t {run_id}'",
                 self.hostname
             ))
             .exec();
+        panic!("expected exec to never fail: {err}");
     }
     fn sync(
         &self,
@@ -510,13 +523,14 @@ impl Host for SlurmClusterHost {
     fn tail_log(&self, run_id: &RunID, log_file_path: &Path, follow: bool) {
         let log_file_path = run_id.path(&self.output_base_dir_path).join(log_file_path);
         let cmd = if follow { "tail -Fq" } else { "cat" };
-        std::process::Command::new(std::env::var("SHELL").unwrap())
+        let err = std::process::Command::new(std::env::var("SHELL").unwrap())
             .arg("-c")
             .arg(&format!(
                 "ssh -tt {} 'exec {cmd} {log_file_path}'",
                 self.hostname
             ))
             .exec();
+        panic!("expected exec to never fail: {err}");
     }
 }
 

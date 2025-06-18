@@ -74,8 +74,8 @@ impl Runner for DefaultRunner {
             .collect::<Vec<_>>();
 
         if host.is_local() {
-            cmd.arg(run_cmd).exec();
-            return;
+            let err = cmd.arg(run_cmd).exec();
+            panic!("expected exec to never fail: {err}");
         }
 
         let hostname = host.hostname();
@@ -91,11 +91,12 @@ impl Runner for DefaultRunner {
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        cmd.arg(&format!(
+        let err = cmd.arg(&format!(
             "ssh -qtt {hostname} 'cd {} && {run_cmd_wrapped_with_variables}'",
             run_dir.path()
         ))
         .exec();
+        panic!("expected exec to never fail: {err}");
     }
 
     fn cmdline(&self) -> &Vec<String> {

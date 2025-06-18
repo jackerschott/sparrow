@@ -72,6 +72,7 @@ pub trait Host {
     }
 
     fn upload_run_dir(&self, prep_dir_path: TempDir) -> RunDirectory;
+    fn download_config_dir(&self, local: &LocalHost, run_id: &RunID) -> Result<PathBuf>;
 
     fn prepare_config_directory(
         &self,
@@ -241,6 +242,16 @@ pub struct HostInfo {
     pub is_configured_for_quick_run: bool,
 }
 
+pub fn build_local_host(local_config: &LocalHostConfig) -> LocalHost {
+    LocalHost::new(
+        local_config.run_output_base_dir.as_path(),
+        local_config
+            .script_run_command_template
+            .clone()
+            .unwrap_or(String::from("bash {}")),
+    )
+}
+
 pub fn build_host(
     host_id: &str,
     local_config: &LocalHostConfig,
@@ -252,13 +263,7 @@ pub fn build_host(
     }
 
     if host_id == "local" {
-        Ok(Box::new(LocalHost::new(
-            local_config.run_output_base_dir.as_path(),
-            local_config
-                .script_run_command_template
-                .clone()
-                .unwrap_or(String::from("bash {}")),
-        )))
+        Ok(Box::new(build_local_host(local_config)))
     } else if remote_configs.contains_key(host_id) {
         Ok(Box::new(SlurmClusterHost::new(
             &host_id,

@@ -1,5 +1,5 @@
 use crate::cfg::RunnerConfig;
-use crate::host::{build_host, Host, HostInfo, RunDirectory, RunID};
+use crate::host::{build_host, build_local_host, Host, HostInfo, RunDirectory, RunID};
 use crate::payload::{build_payload_mapping, CodeSource, PayloadInfo, PayloadMapping};
 use crate::GlobalConfig;
 use anyhow::{Context, Result};
@@ -32,10 +32,7 @@ pub trait Runner {
     }
 }
 
-pub fn build_runner(
-    cmdline: &Vec<String>,
-    config: Option<RunnerConfig>,
-) -> Box<dyn Runner> {
+pub fn build_runner(cmdline: &Vec<String>, config: Option<RunnerConfig>) -> Box<dyn Runner> {
     let config = config.unwrap_or_default();
 
     let variable_transfer_requests = config
@@ -108,24 +105,34 @@ pub fn run(
     let run_group = run_group.unwrap_or(config.run_group);
     let run_id = RunID::new(&run_name, &run_group);
 
+    let local_host = build_local_host(&config.local_host);
+
     println!("Connect to host...");
     let host = build_host(
         &host,
         &config.local_host,
         &config.remote_hosts,
         enforce_quick,
-    ).context(format!("failed to build {host} as host"))?;
+    )
+    .context(format!("failed to build {host} as host"))?;
 
     let runner = build_runner(&remainder, config.runner);
 
     let config_dir = use_previous_config
-        .then_some(host.config_dir_destination_path(&RunID::new(run_name, run_group)))
+        .then(|| {
+            host.download_config_dir(
+                &local_host,
+                &RunID::new(run_name.clone(), run_group.clone()),
+            )
+            .context(format!(
+                "failed to download {run_group}/{run_name} config directory"
+            ))
+        })
+        .transpose()?
         .or(config_dir);
-    let payload_mapping = build_payload_mapping(
-        &config.payload,
-        config_dir.as_deref(),
-        &ignore_revisions,
-    ).context("failed to build payload mapping")?;
+    let payload_mapping =
+        build_payload_mapping(&config.payload, config_dir.as_deref(), &ignore_revisions)
+            .context("failed to build payload mapping")?;
 
     let run_info = RunInfo::new(&*host, &*runner, &payload_mapping, &run_id);
     let run_script = runner.create_run_script(&run_info);

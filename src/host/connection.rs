@@ -99,31 +99,31 @@ impl<'c> Command<'c> {
         self
     }
 
-    pub fn stdout(&'c mut self, cfg: openssh::Stdio) -> &mut Self {
+    pub fn stdout(&mut self, cfg: openssh::Stdio) -> &mut Self {
         self.command.stdout(cfg);
         self
     }
 
-    pub fn stdin(&'c mut self, cfg: openssh::Stdio) -> &mut Self {
+    pub fn stdin(&mut self, cfg: openssh::Stdio) -> &mut Self {
         self.command.stdin(cfg);
         self
     }
 
     #[allow(unused)]
-    pub fn stderr(&'c mut self, cfg: openssh::Stdio) -> &mut Self {
+    pub fn stderr(&mut self, cfg: openssh::Stdio) -> &mut Self {
         self.command.stderr(cfg);
         self
     }
 
-    pub fn output(&'c mut self) -> Result<std::process::Output, openssh::Error> {
+    pub fn output(&mut self) -> Result<std::process::Output, openssh::Error> {
         self.async_runtime.block_on(self.command.output())
     }
 
-    pub fn status(&'c mut self) -> Result<std::process::ExitStatus, openssh::Error> {
+    pub fn status(&mut self) -> Result<std::process::ExitStatus, openssh::Error> {
         self.async_runtime.block_on(self.command.status())
     }
 
-    pub fn spawn(&'c mut self) -> Result<openssh::Child<&'_ openssh::Session>, openssh::Error> {
+    pub fn spawn(&mut self) -> Result<openssh::Child<&openssh::Session>, openssh::Error> {
         self.async_runtime.block_on(self.command.spawn())
     }
 }

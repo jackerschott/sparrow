@@ -43,6 +43,9 @@ impl Host for LocalHost {
     fn upload_run_dir(&self, prep_dir: tempfile::TempDir) -> RunDirectory {
         return RunDirectory::Local(prep_dir);
     }
+    fn download_config_dir(&self, _local: &LocalHost, run_id: &RunID) -> Result<PathBuf> {
+        Ok(self.config_dir_destination_path(run_id))
+    }
 
     fn put(&self, local_path: &Path, host_path: &Path, options: SyncOptions) {
         if local_path != host_path {
