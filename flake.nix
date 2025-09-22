@@ -11,12 +11,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
         sparrow = pkgs.rustPlatform.buildRustPackage {
             name = "sparrow";
-            src = pkgs.fetchFromGitHub {
-                owner = "jackerschott";
-                repo = "sparrow";
-                rev = "cbc957662bec31cc5e2b1589fc55f5702a24cd81";
-                sha256 = "sha256-+O79fzIFRjwxsRqglXEJ+8XIt4Eb4dXAz+/vvxkCIN4=";
-            };
+            src = ./.;
             nativeBuildInputs = with pkgs; [
                 pkg-config
                 makeWrapper
@@ -26,7 +21,7 @@
                 rsync
                 fzf
             ];
-            cargoHash = "sha256-2HaqD8bIF4OvHfmFw5BVdwODnPNwBriBeo7Rx11C4ds=";
+            cargoHash = "sha256-jJKIUojxli2zcJqE8hWHNrr4XvFOIEDfBZFnKdQyCso=";
             postFixup = ''
                 wrapProgram \
                     "$out/bin/sparrow" \
