@@ -56,7 +56,7 @@ impl Connection {
         .expect("rsync should not fail");
     }
 
-    pub fn command(&self, program: &str) -> Command {
+    pub fn command(&self, program: &str) -> Command<'_> {
         Command::from_session(self, program)
     }
 
