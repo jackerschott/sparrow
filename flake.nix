@@ -21,7 +21,7 @@
                 rsync
                 fzf
             ];
-            cargoHash = "sha256-2HaqD8bIF4OvHfmFw5BVdwODnPNwBriBeo7Rx11C4ds=";
+            cargoHash = "sha256-Asbs7ynKkVJa9Dp9u4EHD4JHtGG/0fAdMgqX4cyhCq8=";
             postFixup = ''
                 wrapProgram \
                     "$out/bin/sparrow" \

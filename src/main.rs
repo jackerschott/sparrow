@@ -166,6 +166,7 @@ fn main() -> Result<()> {
             enforce_quick,
             no_config_review,
             remainder,
+            run_script,
             only_print_run_script,
         }) => run(
             run_name,
@@ -177,6 +178,7 @@ fn main() -> Result<()> {
             enforce_quick,
             no_config_review,
             remainder,
+            run_script,
             only_print_run_script,
             config,
         )

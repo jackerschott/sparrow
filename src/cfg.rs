@@ -10,7 +10,8 @@ pub struct GlobalConfig {
     pub payload: PayloadMappingConfig,
     pub remote_hosts: HashMap<String, RemoteHostConfig>,
     pub local_host: LocalHostConfig,
-    pub runner: Option<RunnerConfig>,
+    #[serde(default)]
+    pub runner: RunnerConfig,
     pub run_output: RunOutputConfig,
 }
 
@@ -19,7 +20,7 @@ pub struct LocalCodeSourceConfig {
     pub path: PathBuf,
     pub gitignore_exclude_additions: Option<Vec<String>>,
     pub gitignore_exclude_subtractions: Option<Vec<String>>,
-    pub no_config_exclude: bool
+    pub no_config_exclude: bool,
 }
 
 #[derive(Deserialize)]
@@ -83,10 +84,20 @@ pub struct LocalHostConfig {
     pub script_run_command_template: Option<String>,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize)]
 pub struct RunnerConfig {
     pub config: Option<HashMap<String, String>>,
     pub environment_variable_transfer_requests: Option<Vec<String>>,
+    pub run_script_name: String,
+}
+impl Default for RunnerConfig {
+    fn default() -> Self {
+        RunnerConfig {
+            config: None,
+            environment_variable_transfer_requests: None,
+            run_script_name: "run".to_string(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -157,6 +168,9 @@ pub enum RunnerCommandConfig {
 
         #[arg(trailing_var_arg = true)]
         remainder: Vec<String>,
+
+        #[arg(short = 's', long)]
+        run_script: Option<String>,
 
         #[arg(long)]
         only_print_run_script: bool,

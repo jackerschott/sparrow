@@ -32,9 +32,7 @@ pub trait Runner {
     }
 }
 
-pub fn build_runner(cmdline: &Vec<String>, config: Option<RunnerConfig>) -> Box<dyn Runner> {
-    let config = config.unwrap_or_default();
-
+pub fn build_runner(cmdline: &Vec<String>, config: RunnerConfig) -> Box<dyn Runner> {
     let variable_transfer_requests = config
         .environment_variable_transfer_requests
         .unwrap_or(Vec::new());
@@ -53,6 +51,7 @@ pub fn build_runner(cmdline: &Vec<String>, config: Option<RunnerConfig>) -> Box<
     Box::new(DefaultRunner::new(
         cmdline,
         &variable_transfer_requests,
+        config.run_script_name,
         &config.config.unwrap_or(HashMap::new()),
     ))
 }
@@ -99,8 +98,9 @@ pub fn run(
     enforce_quick: bool,
     no_config_review: bool,
     remainder: Vec<String>,
+    run_script_name: Option<String>,
     only_print_run_script: bool,
-    config: GlobalConfig,
+    mut config: GlobalConfig,
 ) -> Result<()> {
     let run_group = run_group.unwrap_or(config.run_group);
     let run_id = RunID::new(&run_name, &run_group);
@@ -116,6 +116,7 @@ pub fn run(
     )
     .context(format!("failed to build {host} as host"))?;
 
+    config.runner.run_script_name = run_script_name.unwrap_or(config.runner.run_script_name);
     let runner = build_runner(&remainder, config.runner);
 
     let config_dir = use_previous_config

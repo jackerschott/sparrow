@@ -9,6 +9,7 @@ use tempfile::NamedTempFile;
 pub struct DefaultRunner {
     cmdline: Vec<String>,
     environment_variable_transfer_requests: Vec<String>,
+    run_script_name: String,
     config: HashMap<String, String>,
 }
 
@@ -16,11 +17,13 @@ impl DefaultRunner {
     pub fn new(
         cmdline: &Vec<String>,
         environment_variable_transfer_requests: &Vec<String>,
+        run_script_name: String,
         config: &HashMap<String, String>,
     ) -> Self {
         return Self {
             cmdline: cmdline.clone(),
             environment_variable_transfer_requests: environment_variable_transfer_requests.clone(),
+            run_script_name,
             config: config.clone(),
         };
     }
@@ -31,8 +34,14 @@ impl Runner for DefaultRunner {
         let context = build_template_context(run_info);
 
         // load file as string
-        let run_template_content = std::fs::read_to_string(".sparrow/run.sh.j2")
-            .expect("couldn't find .sparrow/run.sh.j2 in current directory");
+        let run_template_content = std::fs::read_to_string(format!(
+            ".sparrow/{template_name}.sh.j2",
+            template_name = self.run_script_name,
+        ))
+        .expect(format!(
+            "couldn't find .sparrow/{template_name}.sh.j2 in current directory",
+            template_name = self.run_script_name
+        ).as_str());
 
         let mut env = minijinja::Environment::new();
         env.add_template("run", run_template_content.as_str())
@@ -91,11 +100,12 @@ impl Runner for DefaultRunner {
                 .collect::<Vec<_>>()
                 .join(" ")
         );
-        let err = cmd.arg(&format!(
-            "ssh -qtt {hostname} 'cd {} && {run_cmd_wrapped_with_variables}'",
-            run_dir.path()
-        ))
-        .exec();
+        let err = cmd
+            .arg(&format!(
+                "ssh -qtt {hostname} 'cd {} && {run_cmd_wrapped_with_variables}'",
+                run_dir.path()
+            ))
+            .exec();
         panic!("expected exec to never fail: {err}");
     }
 
